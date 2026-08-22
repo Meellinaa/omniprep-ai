@@ -3,6 +3,9 @@ import json
 import logging
 import requests
 import re
+import smtplib
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
 from google import genai
 from google.genai import types
 
@@ -129,12 +132,104 @@ def evaluate_interview_session(
                 
         # Send Webhook to n8n if url exists
         trigger_n8n_webhook(candidate_email, target_role, evaluation)
+        # Send native SMTP email if configured
+        send_scorecard_email(candidate_email, target_role, evaluation)
         
         return evaluation
         
     except Exception as e:
         logger.error(f"Error evaluating interview with Gemini: {e}")
         return get_mock_evaluation(candidate_email, target_role, questions_answered)
+
+
+def send_scorecard_email(candidate_email: str, target_role: str, report: dict) -> bool:
+    """
+    Sends the completed scorecard report to the candidate's email using python smtplib.
+    """
+    smtp_server = os.environ.get("SMTP_SERVER")
+    smtp_port = os.environ.get("SMTP_PORT", "587")
+    smtp_user = os.environ.get("SMTP_USERNAME")
+    smtp_pass = os.environ.get("SMTP_PASSWORD")
+    from_email = os.environ.get("SMTP_FROM_EMAIL", smtp_user)
+    
+    if not (smtp_server and smtp_user and smtp_pass):
+        logger.info("SMTP credentials not configured (SMTP_SERVER, SMTP_USERNAME, SMTP_PASSWORD absent). Skipping SMTP dispatch.")
+        return False
+        
+    try:
+        # Create message container
+        msg = MIMEMultipart('alternative')
+        msg['Subject'] = f"Your OmniPrep AI Interview Scorecard: {target_role}"
+        msg['From'] = from_email
+        msg['To'] = candidate_email
+        
+        # Build HTML lists
+        strengths_html = "".join([f"<li style='margin-bottom: 6px;'>{s}</li>" for s in report.get("key_strengths", [])])
+        flags_html = "".join([f"<li style='margin-bottom: 6px;'>{f}</li>" for f in report.get("areas_to_improve", [])])
+        plan_html = "".join([f"<li style='margin-bottom: 6px;'>{p}</li>" for p in report.get("development_plan", [])])
+        
+        questions_html = ""
+        for idx, q in enumerate(report.get("questions", [])):
+            questions_html += f"""
+            <div style="margin-bottom: 20px; padding: 15px; border: 1px solid #e2e8f0; border-radius: 6px; background-color: #f8fafc;">
+                <strong style="color: #1e293b; font-size: 14px;">Q{idx+1}: {q.get('question')}</strong><br/>
+                <p style="margin: 8px 0; font-size: 13px; color: #475569;"><strong>Your Answer:</strong> {q.get('transcript')}</p>
+                <p style="margin: 8px 0; font-size: 13px; color: #059669;"><strong>Gold Standard:</strong> {q.get('gold_standard_response')}</p>
+                <p style="margin: 8px 0; font-size: 13px; color: #b45309;"><strong>Critique:</strong> {q.get('feedback')}</p>
+                <div style="font-size: 11px; color: #94a3b8; font-family: monospace; margin-top: 8px;">
+                    PACE: {q.get('wpm')} WPM | FILLERS: {q.get('fillers')} | FOCUS: {q.get('focus_score')}%
+                </div>
+            </div>
+            """
+
+        html_content = f"""
+        <html>
+        <body style="font-family: Arial, sans-serif; color: #334155; line-height: 1.6; max-width: 600px; margin: 0 auto; padding: 20px;">
+            <div style="text-align: center; margin-bottom: 30px;">
+                <h1 style="color: #0f172a; margin: 0; font-size: 28px;">OMNIPREP <span style="color: #06b6d4;">AI</span></h1>
+                <p style="font-size: 14px; color: #64748b; margin-top: 5px;">Your Simulated Performance Scorecard</p>
+            </div>
+            
+            <div style="background: linear-gradient(135deg, #0e121e 0%, #1c253c 100%); color: #ffffff; padding: 25px; border-radius: 12px; text-align: center; margin-bottom: 25px;">
+                <span style="font-size: 12px; letter-spacing: 2px; text-transform: uppercase; color: #94a3b8; display: block;">Readiness Rating</span>
+                <span style="font-size: 54px; font-weight: bold; color: #06b6d4; display: block; margin: 10px 0;">{report.get('readiness_score')}%</span>
+                <p style="margin: 0; font-size: 14px; color: #e2e8f0;">Job Description Match: <strong>{report.get('jd_match_percent')}%</strong></p>
+            </div>
+            
+            <h2 style="color: #0f172a; border-bottom: 2px solid #e2e8f0; padding-bottom: 8px; font-size: 18px;">Interview Insights</h2>
+            <h3 style="color: #0f172a; font-size: 15px;">Key Strengths</h3>
+            <ul>{strengths_html}</ul>
+            
+            <h3 style="color: #0f172a; font-size: 15px;">Areas to Focus On</h3>
+            <ul>{flags_html}</ul>
+            
+            <h3 style="color: #0f172a; font-size: 15px;">Targeted Development Plan</h3>
+            <ol>{plan_html}</ol>
+            
+            <h2 style="color: #0f172a; border-bottom: 2px solid #e2e8f0; padding-bottom: 8px; margin-top: 30px; font-size: 18px;">Answering Audit Logs</h2>
+            {questions_html}
+            
+            <div style="text-align: center; margin-top: 40px; font-size: 11px; color: #94a3b8; border-top: 1px solid #e2e8f0; padding-top: 20px;">
+                Sent automatically by OmniPrep AI Interview Simulator. Practice makes perfect.
+            </div>
+        </body>
+        </html>
+        """
+        
+        msg.attach(MIMEText(html_content, 'html'))
+        
+        # Connect and send
+        server = smtplib.SMTP(smtp_server, int(smtp_port))
+        server.starttls()
+        server.login(smtp_user, smtp_pass)
+        server.sendmail(from_email, candidate_email, msg.as_string())
+        server.quit()
+        
+        logger.info(f"Successfully sent scorecard email to {candidate_email}.")
+        return True
+    except Exception as e:
+        logger.error(f"Failed to send scorecard email via SMTP: {e}")
+        return False
 
 
 def trigger_n8n_webhook(email: str, role: str, report: dict) -> bool:
@@ -334,10 +429,12 @@ def get_mock_evaluation(email: str, role: str, questions: list[dict]) -> dict:
         },
         "development_plan": development_plan,
         "filler_diagnostics": filler_diagnostics,
-        "questions": evaluated_questions
+        "questions": questions
     }
     
     # Try sending webhook even for mocks if URL is present
     trigger_n8n_webhook(email, role, report)
+    # Send native SMTP email if configured
+    send_scorecard_email(email, role, report)
     
     return report
