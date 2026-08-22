@@ -1518,9 +1518,52 @@ function renderScorecardReport(report) {
         auditContainer.appendChild(auditCard);
     });
 
+    // Render JD Keywords Match Audit List
+    const keywordsListContainer = document.getElementById("report-keywords-list");
+    keywordsListContainer.innerHTML = "";
+    const keywordsAnalysis = report.jd_keywords_analysis || [];
+    keywordsAnalysis.forEach(item => {
+        const div = document.createElement("div");
+        div.className = "response-box";
+        div.style.margin = "0";
+        div.style.padding = "14px";
+        
+        const isMatched = item.status === "matched";
+        const borderColor = isMatched ? "var(--success-green)" : "var(--error-red)";
+        const labelClass = isMatched ? "success-green" : "error-red";
+        const statusLabel = isMatched ? "SPOKEN" : "MISSING";
+        
+        div.style.borderLeft = `3px solid ${borderColor}`;
+        div.style.backgroundColor = isMatched ? "rgba(0, 229, 153, 0.03)" : "rgba(255, 77, 77, 0.03)";
+        
+        div.innerHTML = `
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                <span style="font-weight: bold; font-size: 13px; color: var(--text-primary);">${item.keyword}</span>
+                <span class="badge ${labelClass}" style="font-size: 9px; padding: 1px 6px;">${statusLabel}</span>
+            </div>
+            <p style="margin: 0; font-size: 11px; line-height: 1.4; color: var(--text-muted);">${item.context}</p>
+        `;
+        keywordsListContainer.appendChild(div);
+    });
+
+    // Make sure panel is collapsed initially
+    document.getElementById("keywords-audit-panel").style.display = "none";
+
     lucide.createIcons();
     document.getElementById("webhook-status-msg").textContent = ""; // Clear webhook status
 }
+
+// Toggle Collapsible Keywords Audit Panel
+window.toggleKeywordsAudit = function() {
+    const panel = document.getElementById("keywords-audit-panel");
+    if (!panel) return;
+    if (panel.style.display === "none") {
+        panel.style.display = "block";
+        panel.scrollIntoView({ behavior: "smooth", block: "start" });
+    } else {
+        panel.style.display = "none";
+    }
+};
 
 // Collapsible helper for cards
 window.toggleAuditCard = function(headerElement) {

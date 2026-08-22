@@ -32,10 +32,13 @@ def evaluate_interview_session(
         
         # Prepare content for Gemini
         interview_history = ""
+        combined_transcript = ""
         for idx, q_data in enumerate(questions_answered):
+            transcript = q_data.get('transcript', '[No Answer]')
+            combined_transcript += transcript + " "
             interview_history += f"\n--- Question {idx+1} ({q_data.get('focus', 'General')}) ---\n"
             interview_history += f"Question Asked: {q_data.get('question')}\n"
-            interview_history += f"Candidate Transcript: {q_data.get('transcript', '[No Answer]')}\n"
+            interview_history += f"Candidate Transcript: {transcript}\n"
             interview_history += f"Candidate Telemetry: WPM={q_data.get('wpm', 0)}, Fillers={q_data.get('filler_count', 0)}, Focus%={q_data.get('eye_contact_score', 0)}%\n"
 
         prompt = f"""
@@ -65,6 +68,7 @@ def evaluate_interview_session(
         2. "development_plan": A personalized, checklist-style study and growth plan (3-4 items) based on their weak points.
         3. "filler_diagnostics": Constructive, 1-sentence tips for each filler word tic used (like, um/uh, basically, yeah).
         4. "rubric": Average situation_task_clarity, action_specifics, and result_impact scores across the session.
+        5. "jd_keywords_analysis": Extract key skills/frameworks from target JD and compare against the candidate transcripts. For each keyword, determine if it was "matched" or "missing" and provide an explanation.
         
         Return strictly a JSON object matching this schema:
         {{
@@ -90,6 +94,13 @@ def evaluate_interview_session(
             "basically": "tip text",
             "yeah": "tip text"
           }},
+          "jd_keywords_analysis": [
+            {{
+              "keyword": string,
+              "status": "matched" | "missing",
+              "context": string
+            }}
+          ],
           "questions": [
             {{
               "question": string,
@@ -130,9 +141,8 @@ def evaluate_interview_session(
                 q_eval["fillers"] = orig.get("filler_count", q_eval.get("fillers", 0))
                 q_eval["focus_score"] = orig.get("eye_contact_score", q_eval.get("focus_score", 0))
                 
-        # Send Webhook to n8n if url exists
+        # Send Webhook and SMTP email
         trigger_n8n_webhook(candidate_email, target_role, evaluation)
-        # Send native SMTP email if configured
         send_scorecard_email(candidate_email, target_role, evaluation)
         
         return evaluation
@@ -140,6 +150,49 @@ def evaluate_interview_session(
     except Exception as e:
         logger.error(f"Error evaluating interview with Gemini: {e}")
         return get_mock_evaluation(candidate_email, target_role, questions_answered)
+
+
+def extract_and_match_keywords(job_description: str, combined_transcript: str) -> list[dict]:
+    """
+    Extracts key technologies from Job Description and matches them against candidate's transcript.
+    """
+    jd_lower = job_description.lower()
+    transcript_lower = combined_transcript.lower()
+    
+    # Broad tech vocabulary bank
+    tech_keywords = [
+        "python", "javascript", "react", "fastapi", "docker", "kubernetes", "sql", "postgresql", 
+        "database", "typescript", "three.js", "caching", "redis", "aws", "git", "ci/cd", 
+        "testing", "agile", "scaling", "latency", "rest api", "graphql", "node.js"
+    ]
+    
+    extracted = []
+    for kw in tech_keywords:
+        if kw in jd_lower:
+            extracted.append(kw)
+            
+    if not extracted:
+        # Generic professional soft-skills if JD is short or empty
+        extracted = ["communication", "problem solving", "collaboration", "architecture", "star method"]
+        
+    analysis = []
+    for kw in extracted:
+        pattern = r'\b' + re.escape(kw) + r'\b'
+        is_spoken = re.search(pattern, transcript_lower) is not None
+        
+        if is_spoken:
+            analysis.append({
+                "keyword": kw.capitalize(),
+                "status": "matched",
+                "context": f"You successfully mentioned '{kw.capitalize()}' in your answers, boosting your stack alignment."
+            })
+        else:
+            analysis.append({
+                "keyword": kw.capitalize(),
+                "status": "missing",
+                "context": f"Target role requirement. Try to weave your experience with '{kw.capitalize()}' into your responses."
+            })
+    return analysis
 
 
 def send_scorecard_email(candidate_email: str, target_role: str, report: dict) -> bool:
@@ -153,21 +206,29 @@ def send_scorecard_email(candidate_email: str, target_role: str, report: dict) -
     from_email = os.environ.get("SMTP_FROM_EMAIL", smtp_user)
     
     if not (smtp_server and smtp_user and smtp_pass):
-        logger.info("SMTP credentials not configured (SMTP_SERVER, SMTP_USERNAME, SMTP_PASSWORD absent). Skipping SMTP dispatch.")
+        logger.info("SMTP credentials not configured. Skipping SMTP dispatch.")
         return False
         
     try:
-        # Create message container
         msg = MIMEMultipart('alternative')
         msg['Subject'] = f"Your OmniPrep AI Interview Scorecard: {target_role}"
         msg['From'] = from_email
         msg['To'] = candidate_email
         
-        # Build HTML lists
         strengths_html = "".join([f"<li style='margin-bottom: 6px;'>{s}</li>" for s in report.get("key_strengths", [])])
         flags_html = "".join([f"<li style='margin-bottom: 6px;'>{f}</li>" for f in report.get("areas_to_improve", [])])
         plan_html = "".join([f"<li style='margin-bottom: 6px;'>{p}</li>" for p in report.get("development_plan", [])])
         
+        keywords_html = ""
+        for kw in report.get("jd_keywords_analysis", []):
+            color = "#059669" if kw["status"] == "matched" else "#dc2626"
+            symbol = "✓" if kw["status"] == "matched" else "✗"
+            keywords_html += f"""
+            <li style="margin-bottom: 8px; font-size: 13px;">
+                <strong style="color: {color};">{symbol} {kw['keyword']}</strong>: {kw['context']}
+            </li>
+            """
+            
         questions_html = ""
         for idx, q in enumerate(report.get("questions", [])):
             questions_html += f"""
@@ -205,6 +266,9 @@ def send_scorecard_email(candidate_email: str, target_role: str, report: dict) -
             
             <h3 style="color: #0f172a; font-size: 15px;">Targeted Development Plan</h3>
             <ol>{plan_html}</ol>
+
+            <h3 style="color: #0f172a; font-size: 15px;">Job Description Keywords Audit</h3>
+            <ul style="list-style: none; padding-left: 0;">{keywords_html}</ul>
             
             <h2 style="color: #0f172a; border-bottom: 2px solid #e2e8f0; padding-bottom: 8px; margin-top: 30px; font-size: 18px;">Answering Audit Logs</h2>
             {questions_html}
@@ -218,7 +282,6 @@ def send_scorecard_email(candidate_email: str, target_role: str, report: dict) -
         
         msg.attach(MIMEText(html_content, 'html'))
         
-        # Connect and send
         server = smtplib.SMTP(smtp_server, int(smtp_port))
         server.starttls()
         server.login(smtp_user, smtp_pass)
@@ -279,6 +342,7 @@ def get_mock_evaluation(email: str, role: str, questions: list[dict]) -> dict:
     
     evaluated_questions = []
     total_star_score = 0
+    combined_transcript = ""
     
     stage_data = {
         0: {
@@ -305,6 +369,7 @@ def get_mock_evaluation(email: str, role: str, questions: list[dict]) -> dict:
 
     for idx, q in enumerate(questions):
         transcript = q.get("transcript", "").strip()
+        combined_transcript += transcript + " "
         q_text = q.get("question", "")
         wpm = q.get("wpm", 0)
         fillers = q.get("filler_count", 0)
@@ -357,7 +422,15 @@ def get_mock_evaluation(email: str, role: str, questions: list[dict]) -> dict:
     readiness_score = int((avg_star * 0.45) + (avg_eye_contact * 0.25) + (pacing_score * 0.20) + (filler_score * 0.10))
     readiness_score = max(10, min(95, readiness_score))
     
-    jd_match_percent = int(readiness_score * 0.95)
+    # Calculate mock JD keywords matching audit
+    is_stripe = "stripe" in role.lower()
+    mock_jd = "React Stripe API Payment system scaling frontend telemetry" if is_stripe else "Python FastAPI databases SQL Git PostgreSQL backend scaling"
+    jd_keywords_analysis = extract_and_match_keywords(mock_jd, combined_transcript)
+    
+    # Readjust jd match percent dynamically
+    matched_count = sum(1 for k in jd_keywords_analysis if k["status"] == "matched")
+    total_count = len(jd_keywords_analysis) if jd_keywords_analysis else 1
+    jd_match_percent = int((matched_count / total_count) * 100) if total_count > 0 else 70
     
     # Key strengths and improvement areas
     strengths = [
@@ -395,7 +468,8 @@ def get_mock_evaluation(email: str, role: str, questions: list[dict]) -> dict:
         "like": "Used to buy thinking time. Try to pause silently for 1 second instead of inserting 'like'.",
         "um_uh": "Indicates high cognitive processing load. Map out your project stories in key bullet points beforehand.",
         "basically": "Dilutes technical precision. Replace with authoritative direct verbs (e.g. 'I refactored' instead of 'I basically refactored').",
-        "yeah": "Used as a conversational bridge. Pause instead to project leadership and high-pressure composure."
+        "yeah": "Used as a conversational bridge. Pause instead to project leadership and high-pressure composure.",
+        "so_basically": "Double verbal crutch. Practice transitional silent pauses to project executive presence."
     }
 
     # Development Study Plan
@@ -429,12 +503,11 @@ def get_mock_evaluation(email: str, role: str, questions: list[dict]) -> dict:
         },
         "development_plan": development_plan,
         "filler_diagnostics": filler_diagnostics,
-        "questions": questions
+        "jd_keywords_analysis": jd_keywords_analysis,
+        "questions": evaluated_questions
     }
     
-    # Try sending webhook even for mocks if URL is present
     trigger_n8n_webhook(email, role, report)
-    # Send native SMTP email if configured
     send_scorecard_email(email, role, report)
     
     return report
