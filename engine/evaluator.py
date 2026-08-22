@@ -498,9 +498,19 @@ def get_mock_evaluation(
     Generates dynamic feedback, competencies, diagnostics, and study tasks.
     """
     try:
-        avg_eye_contact = int(sum(q.get("eye_contact_score", 90) for q in questions) / len(questions)) if questions else 90
-        avg_wpm = int(sum(q.get("wpm", 140) for q in questions) / len(questions)) if questions else 140
-        total_fillers = sum(q.get("filler_count", 0) for q in questions)
+        # Compute telemetry only from answered questions. If there are no real answers,
+        # use conservative defaults (low/neutral scores) rather than optimistic ones.
+        answered_questions = [q for q in questions if q and str(q.get("transcript", "")).strip() and str(q.get("transcript", "")).strip() not in ("[No Answer]", "[No vocal answer recorded]")]
+
+        if answered_questions:
+            avg_eye_contact = int(sum(int(q.get("eye_contact_score", 0)) for q in answered_questions) / len(answered_questions))
+            avg_wpm = int(sum(int(q.get("wpm", 0)) for q in answered_questions) / len(answered_questions))
+        else:
+            # No real vocal responses recorded — avoid optimistic defaults that inflate scores.
+            avg_eye_contact = 50
+            avg_wpm = 0
+
+        total_fillers = sum(int(q.get("filler_count", 0)) for q in questions) if questions else 0
         
         evaluated_questions = []
         total_star_score = 0
@@ -526,11 +536,13 @@ def get_mock_evaluation(
         }
 
         # If no questions answered, add placeholder responses to keep output valid and populated
+        # Use placeholder entries only when there are no provided questions. Placeholders use
+        # conservative telemetry defaults (neutral/low) so they don't artificially inflate scores.
         questions_to_process = questions if questions else [
-            {"question": "Walk me through your background and target role fit.", "transcript": "[No Answer]", "wpm": 0, "filler_count": 0, "eye_contact_score": 75},
-            {"question": "Tell me about a challenging technical project you built.", "transcript": "[No Answer]", "wpm": 0, "filler_count": 0, "eye_contact_score": 75},
-            {"question": "Describe a scenario where you faced conflicting opinions.", "transcript": "[No Answer]", "wpm": 0, "filler_count": 0, "eye_contact_score": 75},
-            {"question": "How do you weigh features speed vs system stability?", "transcript": "[No Answer]", "wpm": 0, "filler_count": 0, "eye_contact_score": 75}
+            {"question": "Walk me through your background and target role fit.", "transcript": "[No Answer]", "wpm": 0, "filler_count": 0, "eye_contact_score": 50},
+            {"question": "Tell me about a challenging technical project you built.", "transcript": "[No Answer]", "wpm": 0, "filler_count": 0, "eye_contact_score": 50},
+            {"question": "Describe a scenario where you faced conflicting opinions.", "transcript": "[No Answer]", "wpm": 0, "filler_count": 0, "eye_contact_score": 50},
+            {"question": "How do you weigh features speed vs system stability?", "transcript": "[No Answer]", "wpm": 0, "filler_count": 0, "eye_contact_score": 50}
         ]
 
         for idx, q in enumerate(questions_to_process):
