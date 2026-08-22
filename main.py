@@ -1,6 +1,8 @@
 import os
 import io
 import logging
+import dotenv
+dotenv.load_dotenv()
 from fastapi import FastAPI, UploadFile, File, HTTPException, Query
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import HTMLResponse, StreamingResponse
@@ -26,6 +28,7 @@ class QuestionRequest(BaseModel):
     resume_text: str
     job_description: str
     custom_questions: str = ""
+    target_role: str = "Software Engineer"
 
 class VoiceRequest(BaseModel):
     text: str
@@ -120,7 +123,7 @@ async def generate_questions(payload: QuestionRequest):
     Generates a 4-stage mock interview loop tailored to resume skills and target role JDs.
     """
     try:
-        questions = generate_interview_questions(payload.resume_text, payload.job_description, payload.custom_questions)
+        questions = generate_interview_questions(payload.resume_text, payload.job_description, payload.custom_questions, payload.target_role)
         return {"questions": questions}
     except Exception as e:
         logger.error(f"Error generating questions: {e}")
