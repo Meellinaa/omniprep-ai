@@ -1,0 +1,546 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OmniPrep AI — Multi-Sensory Interview Telemetry</title>
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <!-- Three.js for 3D spatial boardroom backdrop -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <!-- Stylesheet -->
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <div class="app-container">
+        
+        <!-- HEADER -->
+        <header class="app-header">
+            <div class="logo">
+                <span class="logo-icon"><i data-lucide="terminal"></i></span>
+                <h1>OMNIPREP <span class="accent-text">AI</span></h1>
+            </div>
+            <div class="header-status">
+                <span class="status-dot green"></span>
+                <span class="status-label">SYS_READY // telemetry_active</span>
+            </div>
+        </header>
+
+        <main class="main-content">
+            
+            <!-- SCREEN 1: SETUP & INGESTION -->
+            <section id="setup-screen" class="screen-section active">
+                <div class="hero-section">
+                    <h2>Elevate Your Interview Performance</h2>
+                    <p class="subtitle">Ingest your profile, select an AI persona, and engage in a high-stakes, multi-sensory simulated interview with real-time visual and vocal telemetry.</p>
+                </div>
+
+                <div class="setup-grid">
+                    <!-- Left: Profile and JD Input -->
+                    <div class="setup-card panel">
+                        <div class="panel-header">
+                            <i data-lucide="file-text"></i>
+                            <h3>1. Profile Ingestion</h3>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label>Candidate Email Address</label>
+                            <input type="email" id="candidate-email" placeholder="candidate@example.com" value="candidate@example.com">
+                        </div>
+
+                        <div class="form-group">
+                            <label>Resume Upload (PDF)</label>
+                            <div class="file-dropzone" id="resume-dropzone">
+                                <i data-lucide="upload-cloud" class="dropzone-icon"></i>
+                                <p class="dropzone-text">Drag & drop your PDF resume here, or <span class="highlight">browse</span></p>
+                                <input type="file" id="resume-file" accept=".pdf" style="display: none;">
+                                <div id="file-status" class="file-status-info" style="display: none;">
+                                    <i data-lucide="check-circle" class="success-icon"></i>
+                                    <span id="file-name-display">resume.pdf</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="form-group">
+                            <div class="label-row">
+                                <label>Target Job Description (JD)</label>
+                                <div class="presets">
+                                    <button type="button" class="preset-btn" data-preset="stripe">Stripe (Frontend)</button>
+                                    <button type="button" class="preset-btn" data-preset="td">TD Bank (Co-op)</button>
+                                    <button type="button" class="preset-btn" data-preset="deloitte">Deloitte (Analyst)</button>
+                                </div>
+                            </div>
+                            <textarea id="job-description" placeholder="Paste the target job description here..." rows="6"></textarea>
+                        </div>
+
+                        <div class="form-group">
+                            <label>Custom Questions / Focus Areas (Optional)</label>
+                            <textarea id="custom-questions" placeholder="E.g., Ask me about my experience with Kubernetes, or ask specifically: 'Why do you want to work at Stripe?'..." rows="3"></textarea>
+                        </div>
+                    </div>
+
+                    <!-- Right: Persona selector and launch -->
+                    <div class="setup-card panel flex-col justify-between">
+                        <div>
+                            <div class="panel-header">
+                                <i data-lucide="users"></i>
+                                <h3>2. Choose Interviewer Persona</h3>
+                            </div>
+                            
+                            <div class="persona-list">
+                                <!-- Persona 1 -->
+                                <div class="persona-card active" data-persona="alex">
+                                    <div class="persona-meta">
+                                        <div class="persona-avatar alex">A</div>
+                                        <div class="persona-info">
+                                            <h4>Alex <span class="role-tag">Tech Lead</span></h4>
+                                            <p class="persona-desc">Rigorous, fast-paced. Focuses on system design, data structures, and edge cases.</p>
+                                        </div>
+                                    </div>
+                                    <div class="persona-voice">
+                                        <i data-lucide="volume-2"></i>
+                                        <span>Direct, Analytical Tone</span>
+                                    </div>
+                                </div>
+
+                                <!-- Persona 2 -->
+                                <div class="persona-card" data-persona="sarah">
+                                    <div class="persona-meta">
+                                        <div class="persona-avatar sarah">S</div>
+                                        <div class="persona-info">
+                                            <h4>Sarah <span class="role-tag warm">Talent Partner</span></h4>
+                                            <p class="persona-desc">Warm, conversational. Evaluates team collaboration, culture fit, and behavioral STAR stories.</p>
+                                        </div>
+                                    </div>
+                                    <div class="persona-voice">
+                                        <i data-lucide="volume-2"></i>
+                                        <span>Friendly, Conversational Tone</span>
+                                    </div>
+                                </div>
+
+                                <!-- Persona 3 -->
+                                <div class="persona-card" data-persona="marcus">
+                                    <div class="persona-meta">
+                                        <div class="persona-avatar marcus">M</div>
+                                        <div class="persona-info">
+                                            <h4>Marcus <span class="role-tag exec">Executive VP</span></h4>
+                                            <p class="persona-desc">Deliberate, high-stakes. Probes business trade-offs, architecture vision, and leadership scale.</p>
+                                        </div>
+                                    </div>
+                                    <div class="persona-voice">
+                                        <i data-lucide="volume-2"></i>
+                                        <span>Calm, Authoritative Tone</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="launch-container">
+                            <button id="launch-btn" class="btn primary-btn btn-lg">
+                                <span>LAUNCH SIMULATION ROOM</span>
+                                <i data-lucide="play"></i>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- SCREEN 2: LIVE SIMULATION CONSOLE -->
+            <section id="interview-screen" class="screen-section">
+                <div class="console-grid">
+                    
+                    <!-- Left Panel: Interviewer Stage -->
+                    <div class="console-panel panel interviewer-stage">
+                        <div class="panel-header">
+                            <div class="persona-status-header">
+                                <span class="active-avatar" id="active-avatar-label">A</span>
+                                <div>
+                                    <h3 id="active-interviewer-name">Alex // Tech Lead</h3>
+                                    <span class="hud-sub-label">STATE: <span id="interviewer-state" class="text-cyan font-mono" style="font-weight: 700; text-transform: uppercase;">LISTENING</span></span>
+                                </div>
+                            </div>
+                            <div class="badge neon-cyan" id="interviewer-live-badge">LIVE FEED</div>
+                        </div>
+
+                        <!-- 3D Spatial Backdrop container -->
+                        <div class="backdrop-wrapper">
+                            <div id="spatial-backdrop" class="canvas-3d"></div>
+                            
+                            <!-- AI Interviewer Avatar overlay -->
+                            <div class="interviewer-avatar-container">
+                                <div class="avatar-glow-ring" id="avatar-ring"></div>
+                                <div class="interviewer-illustration" id="interviewer-illustration">
+                                    <svg viewBox="0 0 100 100" class="svg-avatar">
+                                        <circle cx="50" cy="35" r="20" fill="var(--slate-border)" />
+                                        <path d="M15 85 C15 60, 85 60, 85 85 Z" fill="var(--slate-border)" />
+                                        <circle cx="50" cy="35" r="10" fill="var(--slate-card)" />
+                                    </svg>
+                                </div>
+                                <div class="voice-lipsync-bar" id="lipsync-indicator"></div>
+                            </div>
+
+                            <!-- Speaking Indicator Wave -->
+                            <div class="audio-spectrum-overlay">
+                                <canvas id="interviewer-audio-wave"></canvas>
+                            </div>
+                        </div>
+
+                        <!-- Subtitles container -->
+                        <div class="question-container">
+                            <span class="q-label">CURRENT QUESTION //</span>
+                            <p class="question-text" id="question-display">Generating your customized interview questions...</p>
+                        </div>
+                    </div>
+
+                    <!-- Right Panel: Candidate Stage -->
+                    <div class="console-panel panel candidate-stage">
+                        <div class="panel-header">
+                            <h3>Candidate Feed</h3>
+                            <div class="telemetry-connection">
+                                <i data-lucide="video" class="cam-icon"></i>
+                                <span class="telemetry-hz font-mono">60FPS // tracking_on</span>
+                            </div>
+                        </div>
+
+                        <!-- Video Feed Wrapper -->
+                        <div class="video-feed-wrapper">
+                            <video id="webcam-feed" autoplay playsinline muted></video>
+                            
+                            <!-- Real-time HUD tracking overlay SVG -->
+                            <svg class="hud-tracking-overlay" id="hud-svg" viewBox="0 0 640 480">
+                                <!-- Mesh lines or markers drawn dynamically by JS -->
+                                <rect id="hud-face-box" x="220" y="140" width="200" height="220" rx="10" stroke="var(--neon-cyan)" stroke-width="1.5" fill="none" opacity="0.6" stroke-dasharray="8 4" />
+                                <circle id="hud-left-eye" cx="290" cy="220" r="6" stroke="var(--neon-cyan)" stroke-width="1" fill="none" opacity="0.8"/>
+                                <circle id="hud-right-eye" cx="350" cy="220" r="6" stroke="var(--neon-cyan)" stroke-width="1" fill="none" opacity="0.8"/>
+                                <line x1="320" y1="10" x2="320" y2="470" stroke="rgba(0, 240, 255, 0.1)" stroke-width="1" stroke-dasharray="4 4" />
+                                <line x1="10" y1="240" x2="630" y2="240" stroke="rgba(0, 240, 255, 0.1)" stroke-width="1" stroke-dasharray="4 4" />
+                            </svg>
+
+                            <!-- Live Telemetry overlay boxes -->
+                            <div class="telemetry-badges-overlay">
+                                <!-- Eye Contact Badge -->
+                                <div class="telemetry-hud-card mini-card">
+                                    <span class="hud-title">EYE CONTACT</span>
+                                    <div class="hud-value-row">
+                                        <div class="radial-progress-mini" id="eye-contact-radial">
+                                            <svg class="radial-svg" viewBox="0 0 36 36">
+                                                <path class="circle-bg" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
+                                                <path class="circle" id="eye-contact-circle" stroke-dasharray="90, 100" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" stroke="var(--neon-cyan)" />
+                                            </svg>
+                                            <span class="radial-percent font-mono" id="eye-contact-pct">90%</span>
+                                        </div>
+                                        <div class="hud-text-details">
+                                            <span class="hud-status-text font-mono text-cyan" id="eye-contact-status">Steady</span>
+                                            <span class="hud-desc-text" id="eye-contact-desc">Strong focus</span>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <!-- Pacing WPM Speedometer -->
+                                <div class="telemetry-hud-card mini-card">
+                                    <span class="hud-title">PACING (WPM)</span>
+                                    <div class="hud-value-row align-center">
+                                        <div class="speedometer-indicator">
+                                            <span class="speed-num font-mono" id="pacing-wpm">142</span>
+                                            <span class="speed-unit">WPM</span>
+                                        </div>
+                                        <div class="hud-text-details">
+                                            <span class="hud-status-text font-mono text-green" id="pacing-status">Optimal</span>
+                                            <span class="hud-desc-text">Ideal range: 130-160</span>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <!-- Filler Words counts -->
+                                <div class="telemetry-hud-card mini-card fillers-hud">
+                                    <span class="hud-title">FILLER WORDS</span>
+                                    <div class="fillers-grid" id="fillers-container">
+                                        <div class="filler-badge" id="filler-like"><span class="badge-lbl">LIKE</span><span class="badge-num font-mono">0</span></div>
+                                        <div class="filler-badge" id="filler-um"><span class="badge-lbl">UM</span><span class="badge-num font-mono">0</span></div>
+                                        <div class="filler-badge" id="filler-uh"><span class="badge-lbl">UH</span><span class="badge-num font-mono">0</span></div>
+                                        <div class="filler-badge" id="filler-youknow"><span class="badge-lbl">YOU KNOW</span><span class="badge-num font-mono">0</span></div>
+                                        <div class="filler-badge" id="filler-yeah"><span class="badge-lbl">YEAH</span><span class="badge-num font-mono">0</span></div>
+                                        <div class="filler-badge" id="filler-basically"><span class="badge-lbl">BASICALLY</span><span class="badge-num font-mono">0</span></div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Mic Input Visualizer Waveform -->
+                        <div class="waveform-container">
+                            <div class="waveform-header">
+                                <span class="hud-sub-label"><i data-lucide="mic"></i> AUDIO TELEMETRY INPUT</span>
+                                <span id="transcription-status" class="font-mono text-amber">LISTENING...</span>
+                            </div>
+                            <canvas id="candidate-mic-wave"></canvas>
+                            <!-- Real-time transcript display -->
+                            <div class="live-transcript-box" id="live-transcript">
+                                <span class="transcript-placeholder">Your spoken answer will appear here in real-time...</span>
+                            </div>
+                        </div>
+
+                        <!-- Action Control Bar -->
+                        <div class="console-controls">
+                            <div class="media-toggles">
+                                <button class="control-btn toggle-btn active" id="toggle-mic" title="Toggle Microphone">
+                                    <i data-lucide="mic"></i>
+                                </button>
+                                <button class="control-btn toggle-btn active" id="toggle-cam" title="Toggle Camera">
+                                    <i data-lucide="video"></i>
+                                </button>
+                            </div>
+
+                            <div class="primary-actions">
+                                <button id="next-btn" class="btn cyan-btn flex-center">
+                                    <span id="next-btn-text">Answer Completed</span>
+                                    <i data-lucide="arrow-right" class="btn-icon"></i>
+                                </button>
+                                <button id="end-btn" class="btn red-btn flex-center">
+                                    <span>End & Evaluate</span>
+                                    <i data-lucide="activity" class="btn-icon"></i>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- SCREEN 3: DIAGNOSTIC SCORECARD -->
+            <section id="report-screen" class="screen-section">
+                <div class="report-header panel">
+                    <div>
+                        <span class="hud-sub-label">SESSION DEBRIEF REPORT</span>
+                        <h2>Interview Performance Scorecard</h2>
+                    </div>
+                    <div class="report-meta font-mono">
+                        <div class="meta-item"><span class="lbl">ROLE:</span><span class="val text-cyan" id="report-role-label">Software Engineer</span></div>
+                        <div class="meta-item"><span class="lbl">EMAIL:</span><span class="val" id="report-email-label">candidate@example.com</span></div>
+                    </div>
+                </div>
+
+                <div class="report-grid">
+                    
+                    <!-- Circular Score Dashboard & Summary -->
+                    <div class="panel flex-col justify-between">
+                        <div class="score-radial-group">
+                            <!-- Overall Score -->
+                            <div class="score-circle-container">
+                                <div class="main-score-radial" id="overall-score-radial">
+                                    <svg class="radial-svg-large" viewBox="0 0 100 100">
+                                        <circle class="circle-bg" cx="50" cy="50" r="42" />
+                                        <circle class="circle" id="overall-score-circle" stroke-dasharray="0, 263" cx="50" cy="50" r="42" stroke="var(--neon-cyan)" />
+                                    </svg>
+                                    <div class="score-label-overlay">
+                                        <span class="score-num font-mono" id="report-overall-score">0</span>
+                                        <span class="score-title">READINESS</span>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- JD Match -->
+                            <div class="score-circle-container">
+                                <div class="main-score-radial" id="jd-score-radial">
+                                    <svg class="radial-svg-large" viewBox="0 0 100 100">
+                                        <circle class="circle-bg" cx="50" cy="50" r="42" />
+                                        <circle class="circle" id="jd-score-circle" stroke-dasharray="0, 263" cx="50" cy="50" r="42" stroke="var(--success-green)" />
+                                    </svg>
+                                    <div class="score-label-overlay">
+                                        <span class="score-num font-mono" id="report-jd-match">0%</span>
+                                        <span class="score-title">JD MATCH</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Strengths and Weaknesses -->
+                        <div class="analysis-pills-container">
+                            <div class="pill-group">
+                                <h4><i data-lucide="smile" class="text-green"></i> Key Strengths</h4>
+                                <ul id="report-strengths" class="pills-list green-pills">
+                                    <li>Clear explanation of backend system optimizations.</li>
+                                    <li>Great posture and camera eye contact.</li>
+                                </ul>
+                            </div>
+                            <div class="pill-group">
+                                <h4><i data-lucide="alert-triangle" class="text-red"></i> Areas to Improve</h4>
+                                <ul id="report-redflags" class="pills-list red-pills">
+                                    <li>Provide metrics in STAR Results section.</li>
+                                    <li>Reduce filler words like "basically" during situational queries.</li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- STAR Methodology Breakdown -->
+                    <div class="panel">
+                        <div class="panel-header">
+                            <i data-lucide="pie-chart"></i>
+                            <h3>STAR Methodology Rubric</h3>
+                        </div>
+                        <div class="star-bars-container">
+                            <!-- Situation & Task -->
+                            <div class="star-metric">
+                                <div class="metric-label-row">
+                                    <span>Situation & Task Clarity</span>
+                                    <span class="font-mono text-cyan" id="star-sit-val">80%</span>
+                                </div>
+                                <div class="progress-track">
+                                    <div class="progress-bar cyan-bar" id="star-sit-bar" style="width: 0%"></div>
+                                </div>
+                                <p class="metric-help">How clearly you paint the background context, challenges, and objectives.</p>
+                            </div>
+
+                            <!-- Action -->
+                            <div class="star-metric">
+                                <div class="metric-label-row">
+                                    <span>Action Specifics</span>
+                                    <span class="font-mono text-cyan" id="star-act-val">85%</span>
+                                </div>
+                                <div class="progress-track">
+                                    <div class="progress-bar cyan-bar" id="star-act-bar" style="width: 0%"></div>
+                                </div>
+                                <p class="metric-help">The detailed steps, reasoning, and technical decisions you took to resolve the issue.</p>
+                            </div>
+
+                            <!-- Result -->
+                            <div class="star-metric">
+                                <div class="metric-label-row">
+                                    <span>Result Impact</span>
+                                    <span class="font-mono text-cyan" id="star-res-val">70%</span>
+                                </div>
+                                <div class="progress-track">
+                                    <div class="progress-bar cyan-bar" id="star-res-bar" style="width: 0%"></div>
+                                </div>
+                                <p class="metric-help">Quantifiable outcomes, metrics, lessons learned, and system scale metrics.</p>
+                            </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Core Competency Assessment -->
+                    <div class="panel">
+                        <div class="panel-header">
+                            <i data-lucide="award"></i>
+                            <h3>Executive Core Competencies</h3>
+                        </div>
+                        <div class="star-bars-container">
+                            <div class="star-metric">
+                                <div class="metric-label-row">
+                                    <span>Technical Articulation</span>
+                                    <span class="font-mono text-cyan" id="comp-tech-val">0%</span>
+                                </div>
+                                <div class="progress-track">
+                                    <div class="progress-bar cyan-bar" id="comp-tech-bar" style="width: 0%"></div>
+                                </div>
+                                <p class="metric-help">Clarity of technical explanations and system concepts.</p>
+                            </div>
+                            
+                            <div class="star-metric">
+                                <div class="metric-label-row">
+                                    <span>Structured Delivery</span>
+                                    <span class="font-mono text-cyan" id="comp-struct-val">0%</span>
+                                </div>
+                                <div class="progress-track">
+                                    <div class="progress-bar cyan-bar" id="comp-struct-bar" style="width: 0%"></div>
+                                </div>
+                                <p class="metric-help">Adherence to the logical STAR answering framework.</p>
+                            </div>
+
+                            <div class="star-metric">
+                                <div class="metric-label-row">
+                                    <span>Vocal Telemetry & Pacing</span>
+                                    <span class="font-mono text-cyan" id="comp-vocal-val">0%</span>
+                                </div>
+                                <div class="progress-track">
+                                    <div class="progress-bar cyan-bar" id="comp-vocal-bar" style="width: 0%"></div>
+                                </div>
+                                <p class="metric-help">Control of speed, breathing pauses, and minimizing crutch words.</p>
+                            </div>
+
+                            <div class="star-metric">
+                                <div class="metric-label-row">
+                                    <span>Visual Presence & Focus</span>
+                                    <span class="font-mono text-cyan" id="comp-visual-val">0%</span>
+                                </div>
+                                <div class="progress-track">
+                                    <div class="progress-bar cyan-bar" id="comp-visual-bar" style="width: 0%"></div>
+                                </div>
+                                <p class="metric-help">Eye contact stability and body language alignment.</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Personalized Development Plan -->
+                    <div class="panel">
+                        <div class="panel-header">
+                            <i data-lucide="compass"></i>
+                            <h3>Development Study Plan</h3>
+                        </div>
+                        <ul class="pills-list green-pills" id="report-dev-plan" style="display: flex; flex-direction: column; gap: 12px; list-style: none; padding-left: 0;">
+                            <!-- Checkboxes populated dynamically by JS -->
+                        </ul>
+                    </div>
+
+                </div>
+
+                <!-- Filler Diagnostics Panel -->
+                <div class="panel" style="margin-bottom: 16px;">
+                    <div class="panel-header">
+                        <i data-lucide="message-square"></i>
+                        <h3>Filler Words Diagnostics & Verbal Critique</h3>
+                    </div>
+                    <div class="response-split" id="report-filler-diag-container" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px;">
+                        <!-- Populated by JS -->
+                    </div>
+                </div>
+
+                <!-- Answer-by-Answer Comparison & Gold Standards -->
+                <div class="panel report-comparison-panel">
+                    <div class="panel-header">
+                        <i data-lucide="git-diff"></i>
+                        <h3>Response Audit & Gold Standard STAR Replacements</h3>
+                    </div>
+                    
+                    <div class="question-audit-list" id="report-questions-list">
+                        <!-- Filled in dynamically by app.js -->
+                    </div>
+                </div>
+
+                <!-- Actions footer -->
+                <div class="report-actions-bar panel">
+                    <div class="automation-webhook-dispatch">
+                        <button id="webhook-trigger-btn" class="btn border-btn">
+                            <i data-lucide="share-2" class="btn-icon"></i>
+                            <span>Trigger n8n Email Debrief</span>
+                        </button>
+                        <span id="webhook-status-msg" class="font-mono hud-sub-label"></span>
+                    </div>
+                    <div class="navigation-ctas">
+                        <button id="restart-btn" class="btn cyan-btn">
+                            <i data-lucide="refresh-cw" class="btn-icon"></i>
+                            <span>Restart New Session</span>
+                        </button>
+                    </div>
+                </div>
+            </section>
+
+        </main>
+        
+        <!-- Loading Overlay -->
+        <div class="loading-overlay" id="loading-overlay">
+            <div class="spinner-container">
+                <div class="spinner"></div>
+                <p id="loading-msg">PROCESSING INTERVIEW DATA...</p>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- Script Orchestration -->
+    <script src="/static/app.js"></script>
+</body>
+</html>
