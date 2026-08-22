@@ -143,7 +143,8 @@ def evaluate_interview_session(
                 
         # Send Webhook and SMTP email
         trigger_n8n_webhook(candidate_email, target_role, evaluation)
-        send_scorecard_email(candidate_email, target_role, evaluation)
+        smtp_success = send_scorecard_email(candidate_email, target_role, evaluation)
+        evaluation["smtp_configured"] = smtp_success or bool(os.environ.get("SMTP_SERVER") and os.environ.get("SMTP_USERNAME") and os.environ.get("SMTP_PASSWORD"))
         
         return evaluation
         
@@ -485,6 +486,16 @@ def get_mock_evaluation(email: str, role: str, questions: list[dict]) -> dict:
     act_spec = int(avg_star * 1.02)
     res_impact = int(avg_star * 0.88)
     
+    smtp_success = send_scorecard_email(email, role, {
+        "key_strengths": strengths,
+        "areas_to_improve": areas_to_improve,
+        "development_plan": development_plan,
+        "jd_keywords_analysis": jd_keywords_analysis,
+        "questions": questions,
+        "readiness_score": readiness_score,
+        "jd_match_percent": jd_match_percent
+    })
+    
     report = {
         "readiness_score": readiness_score,
         "jd_match_percent": jd_match_percent,
@@ -504,10 +515,10 @@ def get_mock_evaluation(email: str, role: str, questions: list[dict]) -> dict:
         "development_plan": development_plan,
         "filler_diagnostics": filler_diagnostics,
         "jd_keywords_analysis": jd_keywords_analysis,
+        "smtp_configured": smtp_success,
         "questions": evaluated_questions
     }
     
     trigger_n8n_webhook(email, role, report)
-    send_scorecard_email(email, role, report)
     
     return report

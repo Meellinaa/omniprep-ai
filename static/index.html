@@ -532,12 +532,13 @@
 
                 <!-- Actions footer -->
                 <div class="report-actions-bar panel">
-                    <div class="automation-webhook-dispatch">
+                    <div class="automation-webhook-dispatch" style="display: flex; flex-direction: column; gap: 8px; align-items: flex-start;">
                         <button id="webhook-trigger-btn" class="btn border-btn">
                             <i data-lucide="share-2" class="btn-icon"></i>
                             <span>Trigger n8n Email Debrief</span>
                         </button>
-                        <span id="webhook-status-msg" class="font-mono hud-sub-label"></span>
+                        <span id="webhook-status-msg" class="font-mono hud-sub-label" style="margin-left: 0;"></span>
+                        <span id="email-status-msg" class="font-mono hud-sub-label" style="color: var(--alert-amber); font-size: 10px; margin-top: 4px;"></span>
                     </div>
                     <div class="navigation-ctas">
                         <button id="restart-btn" class="btn cyan-btn">

@@ -1551,6 +1551,17 @@ function renderScorecardReport(report) {
 
     lucide.createIcons();
     document.getElementById("webhook-status-msg").textContent = ""; // Clear webhook status
+    
+    const emailStatus = document.getElementById("email-status-msg");
+    if (emailStatus) {
+        if (report.smtp_configured) {
+            emailStatus.textContent = `✓ Scorecard successfully emailed to ${candidateEmail}`;
+            emailStatus.style.color = "var(--success-green)";
+        } else {
+            emailStatus.textContent = `⚠️ Email dispatch skipped: SMTP credentials not set on server. Setup SMTP_SERVER, SMTP_USERNAME, and SMTP_PASSWORD in terminal.`;
+            emailStatus.style.color = "var(--alert-amber)";
+        }
+    }
 }
 
 // Toggle Collapsible Keywords Audit Panel
