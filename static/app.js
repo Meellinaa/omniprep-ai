@@ -528,7 +528,8 @@ async function startSimulation() {
             body: JSON.stringify({
                 resume_text: resumeText || "[No resume uploaded. Generic Software Engineer profile]",
                 job_description: jobDescription,
-                custom_questions: customQuestions
+                custom_questions: customQuestions,
+                target_role: targetRole
             })
         });
 
