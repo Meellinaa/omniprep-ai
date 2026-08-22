@@ -592,6 +592,12 @@ async function startMediaStreams() {
 }
 
 function stopMediaStreams() {
+    if (window.speechSynthesis) {
+        window.speechSynthesis.cancel();
+    }
+    isInterviewerSpeaking = false;
+    isMicMuted = false;
+
     if (vadTimerInterval) {
         clearInterval(vadTimerInterval);
         vadTimerInterval = null;

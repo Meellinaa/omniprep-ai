@@ -387,15 +387,24 @@ def get_mock_evaluation(email: str, role: str, questions: list[dict]) -> dict:
             feedback = f"Your answer '{transcript}' was flagged as gibberish or empty. In a real interview, you must respond to the question."
         else:
             word_count = len(transcript.split())
-            if word_count < 35:
-                star_score = 48
-                feedback = f"Short response. {stage_data.get(idx, stage_data[0])['critique']} Expand on your specific technical actions."
-            elif fillers > 6 or wpm > 175:
-                star_score = 70
-                feedback = f"Good technical points, but delivery is compromised. You used {fillers} filler words and spoke at {wpm} WPM. Pace yourself and use structure."
+            if word_count < 30:
+                base_score = 40 + min(15, word_count * 2)
+                base_score -= min(10, fillers * 2)
+                star_score = max(20, min(65, int(base_score)))
+                feedback = f"Short response ({word_count} words). {stage_data.get(idx, stage_data[0])['critique']} Expand on your specific technical actions."
             else:
-                star_score = 88
-                feedback = f"Strong answer. {stage_data.get(idx, stage_data[0])['critique']} Good flow and direct explanation."
+                base_score = 72 + min(16, (word_count - 30) // 3)
+                base_score -= min(12, fillers * 2)
+                base_score += min(6, (focus - 75) // 3) if focus > 75 else -min(10, (75 - focus) // 2)
+                
+                # Deterministic jitter based on character count to differentiate scores naturally
+                jitter = (len(transcript) % 7) - 3
+                star_score = max(35, min(97, int(base_score + jitter)))
+                
+                if fillers > 6 or wpm > 175:
+                    feedback = f"Good technical points, but delivery is compromised. You used {fillers} filler words and spoke at {wpm} WPM. Pace yourself and use structure."
+                else:
+                    feedback = f"Strong answer. {stage_data.get(idx, stage_data[0])['critique']} Good flow and direct explanation."
                 
         total_star_score += star_score
         
@@ -429,14 +438,13 @@ def get_mock_evaluation(email: str, role: str, questions: list[dict]) -> dict:
     jd_keywords_analysis = extract_and_match_keywords(mock_jd, combined_transcript)
     
     # Readjust jd match percent dynamically
-    matched_count = sum(1 for k in jd_keywords_analysis if k["status"] == "matched")
-    total_count = len(jd_keywords_analysis) if jd_keywords_analysis else 1
-    jd_match_percent = int((matched_count / total_count) * 100) if total_count > 0 else 70
+    jd_match_percent = int(readiness_score * 0.95)
     
     # Key strengths and improvement areas
-    strengths = [
-        "Consistent eye-contact and engaged posture throughout the session."
-    ]
+    strengths = []
+    if avg_eye_contact >= 75:
+        strengths.append("Consistent eye-contact and engaged posture throughout the session.")
+
     if avg_star > 70:
         strengths.append("Detailed layout of technical responsibilities and architectural decisions.")
         strengths.append("Direct focus on problem solving and overcoming implementation hurdles.")
@@ -445,6 +453,8 @@ def get_mock_evaluation(email: str, role: str, questions: list[dict]) -> dict:
         strengths.append("Enthusiastic and professional introductory overview.")
         
     areas_to_improve = []
+    if avg_eye_contact < 75:
+        areas_to_improve.append("Maintain steady eye contact and adjust camera positioning to prevent gaze drift.")
     if total_fillers > 8:
         areas_to_improve.append(f"Frequent verbal crutches detected ({total_fillers} fillers). Practice pausing instead of saying 'like' or 'yeah'.")
     if avg_wpm > 170:
