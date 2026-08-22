@@ -20,6 +20,8 @@ let speechRecognitionObj = null;
 let conversationHistory = [];
 let currentStage = 1;
 let lastQuestionAsked = "";
+let stageAccumulatedTranscript = "";
+let stageStartTime = null;
 let hasSpokenForVAD = false;
 let lastSpeechTime = null;
 let vadTimerInterval = null;
@@ -204,7 +206,13 @@ async function checkConfigStatus() {
                 if (data.gemini_active) {
                     banner.style.borderLeft = "3px solid var(--success-green)";
                     banner.style.backgroundColor = "rgba(0, 229, 153, 0.02)";
-                    statusText.textContent = "✓ GEMINI AI ACTIVE // Dynamic, personalized interview questions enabled.";
+                    let statusMsg = "✓ GEMINI AI ACTIVE // Dynamic, personalized interview questions enabled.";
+                    if (data.smtp_active) {
+                        statusMsg += " Email delivery configured.";
+                    } else {
+                        statusMsg += " ⚠️ SMTP not configured — scorecards won't be emailed.";
+                    }
+                    statusText.textContent = statusMsg;
                     statusText.style.color = "var(--success-green)";
                     if (icon) {
                         icon.style.color = "var(--success-green)";
@@ -300,6 +308,7 @@ function setupEventListeners() {
     // Navigation CTAs
     launchBtn.addEventListener("click", startSimulation);
     nextBtn.addEventListener("click", handleAnswerCompleted);
+    document.getElementById("skip-btn").addEventListener("click", handleSkipQuestion);
     endBtn.addEventListener("click", finishAndEvaluate);
     restartBtn.addEventListener("click", () => transitionScreen("setup-screen"));
     webhookTriggerBtn.addEventListener("click", dispatchWebhookToN8N);
@@ -541,6 +550,8 @@ async function startSimulation() {
             currentQuestionIndex = 0;
             currentStage = 1;
             sessionQuestionsAnswered = [];
+            stageAccumulatedTranscript = "";
+            stageStartTime = null;
             
             // Initialize conversation history with first question
             const firstQuestion = interviewQuestions[0].question;
@@ -1010,13 +1021,17 @@ function getSimulatedVisionData() {
 
 // 10. LOAD & PLAY QUESTION (AI SPEECH AND AVATAR WAVE)
 async function loadConversationalQuestion(text) {
-    // Reset transcription counters
+    // Reset transcription counters for this speaking turn
     currentAnswerTranscript = "";
     currentFillerCounts = { like: 0, um: 0, uh: 0, youknow: 0, yeah: 0, basically: 0 };
     currentEyeContactScores = [];
     currentHeadScores = [];
     hasSpokenForVAD = false;
     lastSpeechTime = null;
+
+    if (!stageStartTime) {
+        stageStartTime = Date.now();
+    }
 
     // Clear live displays
     document.getElementById("live-transcript").innerHTML = `<span class="transcript-placeholder">Your spoken answer will appear here in real-time...</span>`;
@@ -1046,9 +1061,11 @@ async function loadConversationalQuestion(text) {
     // Play Turn Beep notifying the candidate it is their turn!
     playTurnBeep(true);
 
-    // Re-enable primary action button for manual override
+    // Re-enable primary action buttons
     nextBtn.disabled = false;
     nextText.textContent = "Done Speaking / Send";
+    const skipBtn = document.getElementById("skip-btn");
+    if (skipBtn) skipBtn.disabled = false;
 
     // Set starting timestamp for telemetry
     questionStartTime = Date.now();
@@ -1265,6 +1282,82 @@ function setupInterviewerAudioWave() {
     drawInterviewerWave();
 }
 
+function getCurrentStageMetrics() {
+    const elapsedSeconds = stageStartTime ? (Date.now() - stageStartTime) / 1000.0 : 60;
+    const combinedTranscript = [stageAccumulatedTranscript, currentAnswerTranscript]
+        .filter(Boolean).join(" ").trim();
+    const words = combinedTranscript.split(/\s+/).filter(w => w.length > 0);
+    const wordCount = words.length;
+    const wpm = elapsedSeconds > 0 ? Math.round(wordCount / (elapsedSeconds / 60.0)) : 140;
+    const avgEyeContact = currentEyeContactScores.length > 0
+        ? Math.round(currentEyeContactScores.reduce((a, b) => a + b, 0) / currentEyeContactScores.length)
+        : 90;
+
+    return {
+        combinedTranscript,
+        wpm,
+        filler_count: Object.values(currentFillerCounts).reduce((a, b) => a + b, 0),
+        eye_contact_score: avgEyeContact
+    };
+}
+
+function getStageQuestionLabel(stage = currentStage) {
+    const stageData = interviewQuestions[Math.min(stage - 1, 3)];
+    return stageData?.question || lastQuestionAsked;
+}
+
+function recordStageAnswer({ transcript, skipped = false }) {
+    const metrics = getCurrentStageMetrics();
+    const finalTranscript = skipped
+        ? "[Skipped by candidate]"
+        : (transcript || metrics.combinedTranscript || "[No vocal answer recorded]");
+
+    sessionQuestionsAnswered.push({
+        question: getStageQuestionLabel(currentStage),
+        focus: interviewQuestions[Math.min(currentStage - 1, 3)]?.focus || "communication",
+        transcript: finalTranscript,
+        wpm: metrics.wpm,
+        filler_count: metrics.filler_count,
+        eye_contact_score: metrics.eye_contact_score,
+        stage: currentStage,
+        skipped
+    });
+
+    stageAccumulatedTranscript = "";
+    stageStartTime = null;
+}
+
+function resetStageTracking() {
+    stageAccumulatedTranscript = "";
+    stageStartTime = null;
+    currentAnswerTranscript = "";
+}
+
+async function processConversationalResponse(turnData) {
+    const previousStage = currentStage;
+    currentStage = turnData.next_stage;
+
+    const nextInterviewerText = turnData.response_text;
+    lastQuestionAsked = nextInterviewerText;
+    conversationHistory.push({ role: "interviewer", text: nextInterviewerText });
+
+    const nextBtn = document.getElementById("next-btn");
+    const nextText = document.getElementById("next-btn-text");
+
+    if (turnData.is_final) {
+        setInterviewerState("speaking");
+        nextText.textContent = "Concluding Interview...";
+        document.getElementById("question-display").textContent = nextInterviewerText;
+        await speakInterviewerQuestion(nextInterviewerText);
+        finishAndEvaluate();
+    } else {
+        if (turnData.next_stage > previousStage) {
+            resetStageTracking();
+        }
+        loadConversationalQuestion(nextInterviewerText);
+    }
+}
+
 // 11. INTERVIEW STEPS HANDLERS
 async function handleAnswerCompleted() {
     // 1. Temporarily mute user mic and stop speech recognition
@@ -1278,41 +1371,24 @@ async function handleAnswerCompleted() {
         } catch (e) {}
     }
     
-    // Play Submit Beep
     playTurnBeep(false);
-
-    // 2. Set AI state to "thinking" (yellow active status glow)
     setInterviewerState("thinking");
+
     const nextBtn = document.getElementById("next-btn");
+    const skipBtn = document.getElementById("skip-btn");
     const nextText = document.getElementById("next-btn-text");
     nextBtn.disabled = true;
+    skipBtn.disabled = true;
     nextText.textContent = "Processing response...";
 
-    // 3. Capture metrics of answered question
-    const elapsedSeconds = questionStartTime ? (Date.now() - questionStartTime) / 1000.0 : 60;
-    const words = currentAnswerTranscript.trim().split(/\s+/).filter(w => w.length > 0);
-    const wordCount = words.length;
-    const wpm = elapsedSeconds > 0 ? Math.round(wordCount / (elapsedSeconds / 60.0)) : 140;
-
-    const avgEyeContact = currentEyeContactScores.length > 0 
-        ? Math.round(currentEyeContactScores.reduce((a, b) => a + b, 0) / currentEyeContactScores.length)
-        : 90;
-
-    // Record this turn in the candidate metrics list
-    sessionQuestionsAnswered.push({
-        question: lastQuestionAsked,
-        focus: interviewQuestions[Math.min(currentStage - 1, 3)]?.focus || "communication",
-        transcript: currentAnswerTranscript || "[No vocal answer recorded]",
-        wpm: wpm,
-        filler_count: Object.values(currentFillerCounts).reduce((a, b) => a + b, 0),
-        eye_contact_score: avgEyeContact
-    });
-
-    // 4. Append transcript to conversation history
+    const previousStage = currentStage;
     const candidateAnswerText = currentAnswerTranscript || "[No vocal response]";
+    if (candidateAnswerText !== "[No vocal response]") {
+        stageAccumulatedTranscript = [stageAccumulatedTranscript, candidateAnswerText]
+            .filter(Boolean).join(" ").trim();
+    }
     conversationHistory.push({ role: "candidate", text: candidateAnswerText });
 
-    // 5. Send to backend conversational-turn API
     try {
         const response = await fetch("/api/conversational-turn", {
             method: "POST",
@@ -1324,38 +1400,26 @@ async function handleAnswerCompleted() {
                 job_description: jobDescription,
                 history: conversationHistory,
                 current_stage: currentStage,
-                custom_questions: customQuestions
+                custom_questions: customQuestions,
+                skip: false
             })
         });
 
         if (response.ok) {
             const turnData = await response.json();
-            
-            // Advance stage
-            currentStage = turnData.next_stage;
-            
-            // Acknowledge new interviewer reply
-            const nextInterviewerText = turnData.response_text;
-            lastQuestionAsked = nextInterviewerText;
-            conversationHistory.push({ role: "interviewer", text: nextInterviewerText });
 
-            if (turnData.is_final) {
-                // If it is final, speak the wrap up question and then immediately generate report!
-                setInterviewerState("speaking");
-                nextText.textContent = "Concluding Interview...";
-                document.getElementById("question-display").textContent = nextInterviewerText;
-                await speakInterviewerQuestion(nextInterviewerText);
-                finishAndEvaluate();
-            } else {
-                // Trigger the next question load
-                loadConversationalQuestion(nextInterviewerText);
+            if (turnData.next_stage > previousStage) {
+                recordStageAnswer({ transcript: stageAccumulatedTranscript, skipped: false });
             }
+
+            await processConversationalResponse(turnData);
         } else {
             alert("Error in conversational agent turn.");
-            // Graceful fallback to advance stages manually
             currentStage = Math.min(currentStage + 1, 4);
+            recordStageAnswer({ transcript: stageAccumulatedTranscript, skipped: false });
             const mockQs = interviewQuestions[currentStage - 1];
             if (mockQs) {
+                resetStageTracking();
                 loadConversationalQuestion(mockQs.question);
             } else {
                 finishAndEvaluate();
@@ -1364,28 +1428,83 @@ async function handleAnswerCompleted() {
     } catch (err) {
         console.error("Conversational turn error:", err);
         finishAndEvaluate();
+    } finally {
+        skipBtn.disabled = false;
+    }
+}
+
+async function handleSkipQuestion() {
+    if (!confirm("Skip this question and move to the next stage? It will be marked as skipped in your report.")) {
+        return;
+    }
+
+    if (localStream) {
+        const audioTrack = localStream.getAudioTracks()[0];
+        if (audioTrack) audioTrack.enabled = false;
+    }
+    if (speechRecognitionObj) {
+        try { speechRecognitionObj.stop(); } catch (e) {}
+    }
+
+    playTurnBeep(false);
+    setInterviewerState("thinking");
+
+    const nextBtn = document.getElementById("next-btn");
+    const skipBtn = document.getElementById("skip-btn");
+    const nextText = document.getElementById("next-btn-text");
+    nextBtn.disabled = true;
+    skipBtn.disabled = true;
+    nextText.textContent = "Skipping question...";
+
+    const previousStage = currentStage;
+    conversationHistory.push({ role: "candidate", text: "[Skipped by candidate]" });
+    recordStageAnswer({ transcript: "", skipped: true });
+
+    try {
+        const response = await fetch("/api/conversational-turn", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                candidate_email: candidateEmail,
+                target_role: targetRole || "Software Engineer Intern",
+                resume_text: resumeText || "[No resume uploaded. Generic Software Engineer profile]",
+                job_description: jobDescription,
+                history: conversationHistory,
+                current_stage: previousStage,
+                custom_questions: customQuestions,
+                skip: true
+            })
+        });
+
+        if (response.ok) {
+            const turnData = await response.json();
+            await processConversationalResponse(turnData);
+        } else {
+            currentStage = Math.min(previousStage + 1, 4);
+            resetStageTracking();
+            const mockQs = interviewQuestions[currentStage - 1];
+            if (mockQs && currentStage <= 4) {
+                loadConversationalQuestion(mockQs.question);
+            } else {
+                finishAndEvaluate();
+            }
+        }
+    } catch (err) {
+        console.error("Skip question error:", err);
+        finishAndEvaluate();
+    } finally {
+        skipBtn.disabled = false;
     }
 }
 
 // Trigger evaluation
 async function finishAndEvaluate() {
-    // If the candidate clicks "End & Evaluate" before completing the loop,
-    // push the current active answer into the queue
-    const words = currentAnswerTranscript.trim().split(/\s+/).filter(w => w.length > 0);
-    if (words.length > 0 && sessionQuestionsAnswered.length < conversationHistory.length / 2) {
-        const elapsedSeconds = questionStartTime ? (Date.now() - questionStartTime) / 1000.0 : 60;
-        const avgEye = currentEyeContactScores.length > 0 
-            ? Math.round(currentEyeContactScores.reduce((a, b) => a + b, 0) / currentEyeContactScores.length)
-            : 90;
-        
-        sessionQuestionsAnswered.push({
-            question: lastQuestionAsked,
-            focus: interviewQuestions[Math.min(currentStage - 1, 3)]?.focus || "communication",
-            transcript: currentAnswerTranscript || "[Interview terminated early by candidate]",
-            wpm: elapsedSeconds > 0 ? Math.round(words.length / (elapsedSeconds / 60.0)) : 140,
-            filler_count: Object.values(currentFillerCounts).reduce((a, b) => a + b, 0),
-            eye_contact_score: avgEye
-        });
+    const words = [stageAccumulatedTranscript, currentAnswerTranscript]
+        .filter(Boolean).join(" ").trim().split(/\s+/).filter(w => w.length > 0);
+
+    const answeredStages = new Set(sessionQuestionsAnswered.map(q => q.stage));
+    if (words.length > 0 && !answeredStages.has(currentStage)) {
+        recordStageAnswer({ transcript: [stageAccumulatedTranscript, currentAnswerTranscript].filter(Boolean).join(" ").trim(), skipped: false });
     }
 
     stopMediaStreams();
@@ -1398,6 +1517,8 @@ async function finishAndEvaluate() {
             body: JSON.stringify({
                 candidate_email: candidateEmail,
                 target_role: targetRole || "Software Engineer Intern",
+                job_description: jobDescription,
+                resume_text: resumeText,
                 questions_answered: sessionQuestionsAnswered
             })
         });
@@ -1622,13 +1743,17 @@ function renderScorecardReport(report) {
     
     const emailStatus = document.getElementById("email-status-msg");
     if (emailStatus) {
-        if (report.smtp_configured) {
+        if (report.email_sent) {
             emailStatus.textContent = `✓ Scorecard successfully emailed to ${candidateEmail}`;
             emailStatus.style.color = "var(--success-green)";
             emailStatus.style.display = "block";
-        } else {
-            emailStatus.textContent = `⚠️ Email delivery unavailable, please try again later.`;
+        } else if (report.smtp_configured) {
+            emailStatus.textContent = `⚠️ Email failed: ${report.email_error || "Unknown SMTP error"}`;
             emailStatus.style.color = "var(--error-red)";
+            emailStatus.style.display = "block";
+        } else {
+            emailStatus.textContent = `⚠️ Email not configured. Add SMTP settings to your .env file to receive scorecards by email.`;
+            emailStatus.style.color = "var(--alert-amber)";
             emailStatus.style.display = "block";
         }
     }
@@ -1670,6 +1795,8 @@ async function dispatchWebhookToN8N() {
             body: JSON.stringify({
                 candidate_email: candidateEmail,
                 target_role: targetRole || "Software Engineer Intern",
+                job_description: jobDescription,
+                resume_text: resumeText,
                 questions_answered: sessionQuestionsAnswered
             })
         });

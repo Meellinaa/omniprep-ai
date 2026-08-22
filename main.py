@@ -44,6 +44,8 @@ class QuestionAnswer(BaseModel):
     wpm: int
     filler_count: int
     eye_contact_score: int
+    stage: int = 1
+    skipped: bool = False
 
 class ConversationTurn(BaseModel):
     role: str
@@ -57,10 +59,13 @@ class TurnRequest(BaseModel):
     history: list[ConversationTurn]
     current_stage: int
     custom_questions: str = ""
+    skip: bool = False
 
 class EvaluationRequest(BaseModel):
     candidate_email: str
     target_role: str
+    job_description: str = ""
+    resume_text: str = ""
     questions_answered: list[QuestionAnswer]
 
 # 1. ROOT & STATIC ROUTING
@@ -142,7 +147,8 @@ async def conversational_turn(payload: TurnRequest):
             job_description=payload.job_description,
             history=history_list,
             current_stage=payload.current_stage,
-            custom_questions=payload.custom_questions
+            custom_questions=payload.custom_questions,
+            skip=payload.skip
         )
         return result
     except Exception as e:
@@ -195,7 +201,10 @@ async def evaluate_session(payload: EvaluationRequest, trigger_webhook: bool = Q
         report = evaluate_interview_session(
             candidate_email=payload.candidate_email,
             target_role=payload.target_role,
-            questions_answered=questions_list
+            questions_answered=questions_list,
+            job_description=payload.job_description,
+            resume_text=payload.resume_text,
+            trigger_webhook=trigger_webhook
         )
         return report
     except Exception as e:

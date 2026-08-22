@@ -61,6 +61,13 @@ def generate_interview_questions(
         Combine the information in the resume, target job description, target role, and custom questions. 
         Tailor the questions specifically to their technical projects and the targeted role.
         
+        IMPORTANT RULES:
+        - Each of the 4 questions MUST be unique and reference specific details from the resume or JD.
+        - Do NOT use generic boilerplate like "tell me about yourself" without referencing their actual experience.
+        - Mention specific technologies, projects, or companies from the resume when possible.
+        - If custom questions are provided, weave them into the relevant stage naturally.
+        - Questions must feel like a real senior interviewer who read the resume carefully.
+        
         Return a raw JSON list. Do not include markdown code block formatting.
         Schema: [{{"stage": 1, "stage_name": "Introduction", "question": "text", "focus": "text"}}]
         """
@@ -129,16 +136,37 @@ def get_mock_questions(
             
     featured_project = featured_project or "featured software application"
 
-    q1 = f"Welcome to your mock interview for the {role} position. To start, could you walk me through your background and explain how your experience with {primary_skills} prepares you for this role?"
+    # Rotate question phrasing based on resume content to reduce repetition across sessions
+    skill_a = extracted_skills[0] if len(extracted_skills) > 0 else "core engineering"
+    skill_b = extracted_skills[1] if len(extracted_skills) > 1 else "system design"
+    skill_c = extracted_skills[2] if len(extracted_skills) > 2 else "collaboration"
+
+    q1_variants = [
+        f"Welcome to your mock interview for the {role} position. Walk me through your background — specifically how your work with {skill_a} and {skill_b} aligns with what we're looking for.",
+        f"Thanks for joining. I'd like to start with your story — what drew you to {role}, and which project best demonstrates your {skill_a} experience?",
+    ]
+    q1 = q1_variants[len(resume_text) % len(q1_variants)]
     
     if custom_topic:
-        q2 = f"Looking at your {featured_project} and your request to focus on {custom_topic}, what was the main engineering challenge you solved using {custom_topic}, and how did you verify its performance?"
+        q2 = f"I noticed your work on {featured_project}. You mentioned wanting to focus on {custom_topic} — walk me through the hardest technical problem you solved there and how you measured success."
     else:
-        q2 = f"Looking at your {featured_project}, can you outline a major engineering hurdle you encountered during its implementation, how you resolved it, and what technical trade-offs you made?"
+        q2_variants = [
+            f"Let's dig into {featured_project}. What was the most complex {skill_a} challenge you faced, and what trade-offs did you make in your architecture?",
+            f"Pick a project from your resume — perhaps {featured_project}. Describe a production issue you debugged involving {skill_b} and how you resolved it under pressure.",
+        ]
+        q2 = q2_variants[len(job_description) % len(q2_variants)]
         
-    q3 = f"Describe a situation where you had to lead or collaborate on a {custom_topic or 'technical'} deliverable with shifting deadlines or conflicting technical opinions. What action did you take to align the team, and what was the result?"
+    q3 = f"Tell me about a time you had to push back on a technical decision or navigate conflicting opinions on a {custom_topic or skill_c} deliverable. What was your approach and the outcome?"
     
-    q4 = f"In a production environment for a {role}, how do you evaluate the balance between shipping a feature quickly to meet critical business needs versus managing technical debt in your database and scaling architecture?"
+    q4_variants = [
+        f"You're a {role} and the team wants to ship a critical feature in one sprint, but your {skill_b} layer has mounting tech debt. How do you decide what to prioritize and how do you communicate that?",
+        f"Imagine you're leading a {skill_a} migration while the product team demands new features. Walk me through how you'd balance speed, quality, and stakeholder expectations.",
+    ]
+    q4 = q4_variants[(len(resume_text) + len(job_description)) % len(q4_variants)]
+
+    q1_legacy = f"Welcome to your mock interview for the {role} position. To start, could you walk me through your background and explain how your experience with {primary_skills} prepares you for this role?"
+    if not resume_text.strip():
+        q1 = q1_legacy
 
     return [
         {
@@ -172,18 +200,23 @@ def process_conversational_turn(
     job_description: str,
     history: list[dict],
     current_stage: int,
-    custom_questions: str = ""
+    custom_questions: str = "",
+    skip: bool = False
 ) -> dict:
     """
     Evaluates the last candidate response and generates the next conversational question.
     Turn rules:
+    - If skip=True, advance to next stage without requiring an answer.
     - If candidate response is too brief or trailing, ask a probing follow-up. Do not advance stage.
     - If candidate response is a query/question, answer it directly, then pivot back to the interview.
     - If answer is sufficient, acknowledge and advance stage (or conclude interview if stage 4).
     """
+    if skip:
+        return advance_stage(resume_text, job_description, custom_questions, current_stage, skipped=True)
+
     api_key = os.environ.get("GEMINI_API_KEY")
     if not api_key:
-        return get_mock_conversational_turn(history, current_stage, job_description, custom_questions)
+        return get_mock_conversational_turn(history, current_stage, resume_text, job_description, custom_questions)
 
     try:
         client = genai.Client(api_key=api_key)
@@ -217,6 +250,8 @@ def process_conversational_turn(
         2. INTERACTIVE RESPONDING: If the candidate asks you a question, seeks clarification, or makes a comment (e.g. asking 'Can you explain the stack?', 'What does that mean?', 'What is the team size?'), you MUST answer their question directly in a conversational, human way (1-2 sentences), and then pivot back to the interview topic. Do not ignore their questions!
         3. PROBING: If the candidate gives a very short, trailing, empty, or gibberish answer (e.g. 'blah blah', 'I don't know', 'yes', 'no'), DO NOT advance the stage. Ask a gentle follow-up probing question to get more details (e.g. 'Could you give me a specific technical hurdle you solved?').
         4. TRANSITIONS: If the candidate answered sufficiently, acknowledge a specific detail they mentioned, and transition to the next stage (or conclude if Stage 4 is completed).
+        5. VARIETY: Never repeat a question or topic already covered in the conversation history. Each new stage question must introduce a fresh angle from the resume or JD.
+        6. BREVITY: Keep stage-advancement questions focused — ask ONE clear question, not a paragraph of setup plus a question.
         
         Return strictly a JSON object with this schema:
         {{
@@ -245,9 +280,57 @@ def process_conversational_turn(
         
     except Exception as e:
         logger.error(f"Error processing conversational turn: {e}")
-        return get_mock_conversational_turn(history, current_stage, job_description, custom_questions)
+        return get_mock_conversational_turn(history, current_stage, resume_text, job_description, custom_questions)
 
-def get_mock_conversational_turn(history: list[dict], current_stage: int, job_description: str, custom_questions: str = "") -> dict:
+def advance_stage(
+    resume_text: str,
+    job_description: str,
+    custom_questions: str,
+    current_stage: int,
+    skipped: bool = False
+) -> dict:
+    """Advance to the next interview stage, optionally after a skip."""
+    next_stage = current_stage + 1
+
+    if next_stage > 4:
+        return {
+            "response_text": "No problem, let's wrap up here. Thank you for your time — I'll compile your scorecard now.",
+            "next_stage": 4,
+            "is_final": True
+        }
+
+    mock_list = get_mock_questions(resume_text, job_description, custom_questions)
+    next_q_data = mock_list[next_stage - 1]
+    next_question = next_q_data["question"]
+
+    if skipped:
+        prefix = {
+            2: "That's fine, we can come back to that. Let's move on.",
+            3: "Understood, skipping ahead.",
+            4: "No worries. One last topic."
+        }.get(next_stage, "Let's continue.")
+        response_text = f"{prefix} {next_question}"
+    else:
+        transitions = {
+            2: f"Thank you for sharing that. Let's move into a technical deep-dive. {next_question}",
+            3: f"Good context. Now a behavioral scenario. {next_question}",
+            4: f"Appreciate the detail. Last question — a trade-off scenario. {next_question}"
+        }
+        response_text = transitions.get(next_stage, next_question)
+
+    return {
+        "response_text": response_text,
+        "next_stage": next_stage,
+        "is_final": False
+    }
+
+def get_mock_conversational_turn(
+    history: list[dict],
+    current_stage: int,
+    resume_text: str,
+    job_description: str,
+    custom_questions: str = ""
+) -> dict:
     """
     Mock back-and-forth conversational follow-up rules when Gemini key is absent.
     Handles gibberish, user questions, and stage transitions realistically.
@@ -299,28 +382,4 @@ def get_mock_conversational_turn(history: list[dict], current_stage: int, job_de
         }
         
     # 3. Advance stage
-    next_stage = current_stage + 1
-    
-    if next_stage > 4:
-        return {
-            "response_text": "Thank you so much for your time. That concludes our interview session. I will compile your scorecard telemetry report now.",
-            "next_stage": 4,
-            "is_final": True
-        }
-        
-    # Get next base question
-    mock_list = get_mock_questions("", job_description, custom_questions)
-    next_q_data = mock_list[next_stage - 1]
-    
-    # Acknowledge and transition (never say "nice answer" statically)
-    transitions = {
-        2: f"That makes sense. Thank you for walking me through your background. Let's move into a technical project. {next_q_data['question']}",
-        3: f"I appreciate that technical explanation. Let's transition to a behavioral scenario. {next_q_data['question']}",
-        4: f"Great details. Finally, let's explore architectural trade-offs under deadlines. {next_q_data['question']}"
-    }
-    
-    return {
-        "response_text": transitions.get(next_stage, next_q_data['question']),
-        "next_stage": next_stage,
-        "is_final": False
-    }
+    return advance_stage(resume_text, job_description, custom_questions, current_stage, skipped=False)

@@ -482,6 +482,18 @@ body {
     box-shadow: 0 0 12px var(--neon-cyan-glow);
 }
 
+.amber-btn {
+    background: rgba(255, 184, 0, 0.12);
+    border: 1px solid rgba(255, 184, 0, 0.35);
+    color: var(--alert-amber);
+}
+
+.amber-btn:hover {
+    background: rgba(255, 184, 0, 0.22);
+    border-color: var(--alert-amber);
+    box-shadow: 0 0 12px rgba(255, 184, 0, 0.15);
+}
+
 .red-btn {
     background-color: rgba(255, 77, 77, 0.1);
     color: var(--alert-red);
