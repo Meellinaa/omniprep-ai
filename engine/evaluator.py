@@ -332,6 +332,45 @@ def trigger_n8n_webhook(email: str, role: str, report: dict) -> bool:
         return False
 
 
+def generate_dynamic_gold_standard(stage_idx: int, transcript: str, role: str) -> str:
+    """
+    Dynamically restructures the candidate's answer into a polished STAR response, 
+    eliminating fillers and focusing on technical metrics, rather than static boilerplate templates.
+    """
+    is_empty = not transcript or transcript == "[No vocal answer recorded]" or transcript == "[No Answer]" or len(transcript.split()) < 10
+    
+    if is_empty:
+        # High quality situational templates if candidate did not answer
+        templates = {
+            0: f"Situation: As an applicant for the {role} position. Task: I needed to outline my technical background and express alignment with your engineering initiatives. Action: I summarized my hands-on software design work and highlighted my active motivation. Result: Successfully demonstrated cultural fit and stack preparedness.",
+            1: f"Situation: Our high-throughput backend services encountered critical database latency constraints. Task: My responsibility was to optimize query performance and scale the backend. Action: I refactored the caching policies, set up database indexing, and introduced connection pooling. Result: Reduced latency by 35% with zero downtime.",
+            2: f"Situation: Mid-sprint, our project deliverables shifted due to client requests. Task: I was tasked with adapting the sprint velocity without compromising code quality. Action: I coordinated daily check-ins, adjusted project milestones, and integrated automated test cases. Result: Delivered core features on time with a 95% test coverage rate.",
+            3: f"Situation: Deciding between shipping a time-sensitive payment feature or fixing technical debt. Task: Balance immediate business requirements with technical debt management. Action: I proposed a phased release strategy using feature flags and scheduled database refactoring for the next cycle. Result: Met business deadlines while securing system stability."
+        }
+        return templates.get(stage_idx, templates[0])
+
+    # Clean the transcript of common verbal clutter
+    clean = transcript.replace("basically", "").replace("like", "").replace("um", "").replace("uh", "").replace("yeah", "")
+    words = clean.split()
+    
+    # Extract candidate nouns to tailor the mock response
+    custom_keywords = [w.capitalize().strip(".,!?;:") for w in words if len(w) > 4 and w.lower() not in ["about", "experience", "western", "student", "tired", "really", "decided", "longest", "using"]]
+    main_tech = custom_keywords[0] if custom_keywords else "software engineering"
+    secondary_tech = custom_keywords[1] if len(custom_keywords) > 1 else "architecture"
+    
+    # Extract the first segment of their spoken words to preserve their actual project context
+    context_phrase = " ".join(words[:12])
+    
+    templates = {
+        0: f"Situation: Discussing my background where I explained that {context_phrase}... Task: My goal was to demonstrate how my core competencies in {main_tech} prepare me for the {role} role. Action: I structured my introduction, highlighted key projects leveraging {secondary_tech}, and aligned with the role. Result: Presented a cohesive introductory story with high business relevance.",
+        1: f"Situation: Working on a project where I described that {context_phrase}... Task: I was responsible for resolving the technical challenges and scaling our system. Action: I refactored the data-layer bottlenecks, optimized endpoints using {main_tech}, and ensured proper {secondary_tech}. Result: Achieved clean code modularity and accelerated system execution by 20%.",
+        2: f"Situation: In a collaborative environment where {context_phrase}... Task: I had to resolve team differences and meet shipping milestones. Action: I proposed a clear STAR path, leveraged automated tracking for {main_tech}, and focused on {secondary_tech}. Result: Successfully aligned team opinions and delivered the features on schedule.",
+        3: f"Situation: Confronting the architectural decision where {context_phrase}... Task: I had to evaluate development trade-offs under a tight deadline. Action: I analyzed the trade-offs of {main_tech}, prioritized core services, and documented {secondary_tech} risks. Result: Maintained high code stability and hit the target launch timeline."
+    }
+    
+    return templates.get(stage_idx, templates[0])
+
+
 def get_mock_evaluation(email: str, role: str, questions: list[dict]) -> dict:
     """
     Provides comprehensive mock evaluation scoring and detailed analytics when Gemini is not active.
@@ -408,7 +447,7 @@ def get_mock_evaluation(email: str, role: str, questions: list[dict]) -> dict:
                 
         total_star_score += star_score
         
-        gold = stage_data.get(idx, stage_data[0])["gold"]
+        gold = generate_dynamic_gold_standard(idx, transcript, role)
         
         evaluated_questions.append({
             "question": q_text,

@@ -852,11 +852,11 @@ function calculateLivePacing(text) {
 function scanForFillers(text) {
     const fillerWords = {
         like: /\b(like)\b/gi,
-        um: /\b(um)\b/gi,
-        uh: /\b(uh)\b/gi,
-        youknow: /\b(you know)\b/gi,
-        yeah: /\b(yeah)\b/gi,
-        basically: /\b(basically|so basically)\b/gi
+        um: /\b(um|uhm|ahm)\b/gi,
+        uh: /\b(uh|eh|ah)\b/gi,
+        youknow: /\b(you\s+know)\b/gi,
+        yeah: /\b(yeah|yup|yea)\b/gi,
+        basically: /\b(basically|so\s+basically)\b/gi
     };
 
     let counts = { like: 0, um: 0, uh: 0, youknow: 0, yeah: 0, basically: 0 };
@@ -1430,7 +1430,10 @@ function renderScorecardReport(report) {
 
     // Set Scores
     document.getElementById("report-overall-score").textContent = report.readiness_score;
-    document.getElementById("report-jd-match").textContent = `${report.jd_match_percent}%`;
+    
+    const isJdEmpty = !jobDescription || jobDescription.trim() === "";
+    const jdMatchText = isJdEmpty ? "N/A" : `${report.jd_match_percent}%`;
+    document.getElementById("report-jd-match").textContent = jdMatchText;
 
     // Radial animations
     const overallCircle = document.getElementById("overall-score-circle");
@@ -1438,7 +1441,7 @@ function renderScorecardReport(report) {
 
     // Circle dash calculations: radius 42 has circumference of 263.89
     const overallDash = (report.readiness_score / 100) * 263.89;
-    const jdDash = (report.jd_match_percent / 100) * 263.89;
+    const jdDash = isJdEmpty ? 0 : (report.jd_match_percent / 100) * 263.89;
 
     overallCircle.setAttribute("stroke-dasharray", `${overallDash}, 263.89`);
     jdCircle.setAttribute("stroke-dasharray", `${jdDash}, 263.89`);
@@ -1530,6 +1533,25 @@ function renderScorecardReport(report) {
         const auditCard = document.createElement("div");
         auditCard.className = `audit-card ${idx === 0 ? "expanded" : ""}`;
 
+        let paceStatus = "optimal (aim for 110-160 WPM)";
+        if (item.wpm === 0) {
+            paceStatus = "no answer recorded";
+        } else if (item.wpm < 110) {
+            paceStatus = "slightly slow (try to speak with more momentum)";
+        } else if (item.wpm > 160) {
+            paceStatus = "slightly fast (aim for a controlled 110-160 WPM pace)";
+        }
+        
+        let fillerStatus = "excellent verbal control";
+        if (item.fillers > 0) {
+            fillerStatus = `${item.fillers} filler word${item.fillers > 1 ? "s" : ""} detected (aim for 0 tics)`;
+        }
+        
+        let focusStatus = "strong eye-contact engagement";
+        if (item.focus_score < 75) {
+            focusStatus = "eye contact drifted (maintain lens engagement)";
+        }
+
         auditCard.innerHTML = `
             <div class="audit-header" onclick="toggleAuditCard(this)">
                 <span class="audit-q-text font-mono">Q${idx+1}: ${item.question}</span>
@@ -1543,8 +1565,10 @@ function renderScorecardReport(report) {
                     <div class="response-box">
                         <span class="box-title">Your Response</span>
                         <p class="box-content">${item.transcript}</p>
-                        <div class="telemetry-bar-text font-mono" style="margin-top:10px; font-size:10px; color:var(--text-muted);">
-                            PACE: ${item.wpm} WPM | FILLERS: ${item.fillers} | FOCUS: ${item.focus_score}%
+                        <div class="telemetry-bar-text font-mono" style="margin-top:10px; font-size:10px; color:var(--text-muted); line-height: 1.6;">
+                            <div>⏱️ PACE: <strong>${item.wpm} WPM</strong> — ${paceStatus}</div>
+                            <div>🗣️ FILLERS: <strong>${item.fillers}</strong> — ${fillerStatus}</div>
+                            <div>👁️ FOCUS: <strong>${item.focus_score}%</strong> — ${focusStatus}</div>
                         </div>
                     </div>
                     <div class="response-box gold">
@@ -1601,9 +1625,11 @@ function renderScorecardReport(report) {
         if (report.smtp_configured) {
             emailStatus.textContent = `✓ Scorecard successfully emailed to ${candidateEmail}`;
             emailStatus.style.color = "var(--success-green)";
+            emailStatus.style.display = "block";
         } else {
-            emailStatus.textContent = `⚠️ Email dispatch skipped: SMTP credentials not set on server. Setup SMTP_SERVER, SMTP_USERNAME, and SMTP_PASSWORD in terminal.`;
-            emailStatus.style.color = "var(--alert-amber)";
+            emailStatus.textContent = `⚠️ Email delivery unavailable, please try again later.`;
+            emailStatus.style.color = "var(--error-red)";
+            emailStatus.style.display = "block";
         }
     }
 }
