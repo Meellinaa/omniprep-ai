@@ -71,6 +71,18 @@ async def get_index():
     except FileNotFoundError:
         raise HTTPException(status_code=404, detail="Frontend index.html not found.")
 
+# 1.5 CONFIG STATUS ROUTE
+@app.get("/api/config-status")
+async def get_config_status():
+    """
+    Checks if API keys and credentials are configured in the current shell environment.
+    """
+    return {
+        "gemini_active": bool(os.environ.get("GEMINI_API_KEY")),
+        "elevenlabs_active": bool(os.environ.get("ELEVEN_LABS_API_KEY")),
+        "smtp_active": bool(os.environ.get("SMTP_SERVER") and os.environ.get("SMTP_USERNAME") and os.environ.get("SMTP_PASSWORD"))
+    }
+
 # 2. RESUME INGESTION ROUTE
 @app.post("/api/upload-resume")
 async def upload_resume(file: UploadFile = File(...)):

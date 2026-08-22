@@ -39,6 +39,15 @@
                     <p class="subtitle">Ingest your profile, select an AI persona, and engage in a high-stakes, multi-sensory simulated interview with real-time visual and vocal telemetry.</p>
                 </div>
 
+                <div id="ai-status-banner" class="panel" style="margin-bottom: 20px; padding: 12px; display: flex; align-items: center; justify-content: space-between; border-left: 3px solid var(--alert-amber); background: rgba(255, 179, 0, 0.02); display: none;">
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                        <i data-lucide="alert-triangle" id="ai-status-icon" style="color: var(--alert-amber); width: 16px; height: 16px;"></i>
+                        <span id="ai-status-text" class="font-mono" style="font-size: 11px; color: var(--text-muted);">
+                            INTEGRATION_STATUS // checking credentials...
+                        </span>
+                    </div>
+                </div>
+
                 <div class="setup-grid">
                     <!-- Left: Profile and JD Input -->
                     <div class="setup-card panel">

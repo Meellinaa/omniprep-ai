@@ -187,7 +187,43 @@ document.addEventListener("DOMContentLoaded", () => {
     // Ingest components & listeners
     setupEventListeners();
     initThreeJSBackdrop();
+    checkConfigStatus();
 });
+
+async function checkConfigStatus() {
+    try {
+        const response = await fetch("/api/config-status");
+        if (response.ok) {
+            const data = await response.json();
+            const banner = document.getElementById("ai-status-banner");
+            const statusText = document.getElementById("ai-status-text");
+            const icon = document.getElementById("ai-status-icon");
+            
+            if (banner && statusText) {
+                banner.style.display = "flex";
+                if (data.gemini_active) {
+                    banner.style.borderLeft = "3px solid var(--success-green)";
+                    banner.style.backgroundColor = "rgba(0, 229, 153, 0.02)";
+                    statusText.textContent = "✓ GEMINI AI ACTIVE // Dynamic, personalized interview questions enabled.";
+                    statusText.style.color = "var(--success-green)";
+                    if (icon) {
+                        icon.style.color = "var(--success-green)";
+                    }
+                } else {
+                    banner.style.borderLeft = "3px solid var(--alert-amber)";
+                    banner.style.backgroundColor = "rgba(255, 179, 0, 0.02)";
+                    statusText.textContent = "⚠️ SANDBOX FALLBACK ACTIVE // GEMINI_API_KEY absent. Run 'export GEMINI_API_KEY=your_key' in your terminal tab to unlock live AI question generation.";
+                    statusText.style.color = "var(--alert-amber)";
+                    if (icon) {
+                        icon.style.color = "var(--alert-amber)";
+                    }
+                }
+            }
+        }
+    } catch (e) {
+        console.error("Config check failed:", e);
+    }
+}
 
 // 1. SETUP EVENT LISTENERS
 function setupEventListeners() {
