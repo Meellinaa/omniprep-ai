@@ -31,7 +31,10 @@ let currentHeadScores = [];
 let questionStartTime = null;
 
 // State indicator and beep sound utilities
+let currentInterviewerState = "listening";
+
 function setInterviewerState(state) {
+    currentInterviewerState = state;
     const stateLabel = document.getElementById("interviewer-state");
     const liveBadge = document.getElementById("interviewer-live-badge");
     const avatarRing = document.getElementById("avatar-ring");
@@ -70,6 +73,36 @@ function setInterviewerState(state) {
         avatarRing.style.borderColor = "var(--neon-cyan)";
         avatarRing.style.boxShadow = "0 0 15px var(--neon-cyan-glow)";
     }
+}
+
+function showLiveHint(text, type = "info") {
+    const overlay = document.getElementById("live-hints-overlay");
+    if (!overlay) return;
+
+    // Prevent immediate warning spam
+    const existing = Array.from(overlay.children).find(child => child.textContent.includes(text));
+    if (existing) return;
+
+    const hint = document.createElement("div");
+    hint.className = `live-hint ${type}`;
+    
+    let icon = "💡";
+    if (type === "warning") icon = "⚠️";
+    else if (type === "danger") icon = "🚨";
+    else if (type === "success") icon = "✓";
+
+    hint.innerHTML = `<span>${icon} ${text}</span>`;
+    overlay.appendChild(hint);
+
+    // Fade out and remove after 3.5 seconds
+    setTimeout(() => {
+        hint.style.animation = "slide-out 0.3s ease-in forwards";
+        setTimeout(() => {
+            if (hint.parentNode) {
+                overlay.removeChild(hint);
+            }
+        }, 300);
+    }, 3500);
 }
 
 function playTurnBeep(isUserTurn) {
@@ -618,10 +651,23 @@ function setupAudioVisualizer(stream) {
         canvasCtx.fillRect(0, 0, width, height);
 
         canvasCtx.lineWidth = 2;
-        // Cyan color wave matching telemetry style
-        canvasCtx.strokeStyle = isMicMuted ? "#FF4D4D" : "var(--neon-cyan)";
+        
+        let waveColor = "var(--success-green)";
+        let shadowColor = "var(--success-glow)";
+        if (isMicMuted) {
+            waveColor = "#FF4D4D";
+            shadowColor = "rgba(255, 77, 77, 0.4)";
+        } else if (currentInterviewerState === "thinking") {
+            waveColor = "var(--alert-amber)";
+            shadowColor = "var(--alert-glow)";
+        } else if (currentInterviewerState === "speaking") {
+            waveColor = "var(--neon-cyan)";
+            shadowColor = "var(--neon-cyan-glow)";
+        }
+        
+        canvasCtx.strokeStyle = waveColor;
         canvasCtx.shadowBlur = 4;
-        canvasCtx.shadowColor = isMicMuted ? "rgba(255, 77, 77, 0.4)" : "var(--neon-cyan-glow)";
+        canvasCtx.shadowColor = shadowColor;
 
         canvasCtx.beginPath();
 
@@ -728,6 +774,15 @@ function calculateLivePacing(text) {
 
     wpmLabel.textContent = wpm;
 
+    // Real-time pacing overlay alerts
+    if (wordCount > 6) {
+        if (wpm > 180) {
+            showLiveHint("Speaking too fast!", "warning");
+        } else if (wpm < 95) {
+            showLiveHint("Speaking too slow", "warning");
+        }
+    }
+
     // WPM boundaries: Too Slow < 110 | Optimal 130–160 | Fast > 180
     if (wpm === 0) {
         statusLabel.textContent = "Silent";
@@ -766,6 +821,12 @@ function scanForFillers(text) {
         const matches = text.match(fillerWords[key]);
         counts[key] = matches ? matches.length : 0;
         
+        // Trigger alert if a new filler is spoken
+        const diff = counts[key] - currentFillerCounts[key];
+        if (diff > 0 && currentScreen === "interview-screen" && currentInterviewerState === "listening") {
+            showLiveHint(`Filler used: "${key}"`, "warning");
+        }
+
         // Update badge
         const badge = document.getElementById(`filler-${key}`);
         if (badge) {
@@ -845,6 +906,14 @@ function updateVisionHUD(data) {
     eyeContactPct.textContent = `${data.eye_contact_score}%`;
     eyeContactStatus.textContent = data.eye_contact_status;
     eyeContactDesc.textContent = data.gaze_details;
+
+    // Real-time HUD visual/eye contact triggers
+    if (data.eye_contact_score < 60 && currentScreen === "interview-screen" && currentInterviewerState === "listening") {
+        showLiveHint("Maintain eye contact", "danger");
+    }
+    if (data.head_pose_score < 65 && currentScreen === "interview-screen" && currentInterviewerState === "listening") {
+        showLiveHint("Posture alignment alert", "warning");
+    }
 
     // Apply color class based on score
     if (data.eye_contact_score > 75) {
