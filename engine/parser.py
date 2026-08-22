@@ -132,13 +132,13 @@ def get_mock_questions(
     q1 = f"Welcome to your mock interview for the {role} position. To start, could you walk me through your background and explain how your experience with {primary_skills} prepares you for this role?"
     
     if custom_topic:
-        q2 = f"For our technical deep-dive, let's explore your request to focus on {custom_topic}. Looking at your {featured_project}, what was the main engineering challenge you solved using {custom_topic}, and how did you verify its performance?"
+        q2 = f"Looking at your {featured_project} and your request to focus on {custom_topic}, what was the main engineering challenge you solved using {custom_topic}, and how did you verify its performance?"
     else:
-        q2 = f"For our technical deep-dive, let's look at your {featured_project}. Can you outline a major engineering hurdle you encountered during its implementation, how you resolved it, and what technical trade-offs you made?"
+        q2 = f"Looking at your {featured_project}, can you outline a major engineering hurdle you encountered during its implementation, how you resolved it, and what technical trade-offs you made?"
         
-    q3 = f"Let's transition to a behavioral scenario. Describe a situation where you had to lead or collaborate on a {custom_topic or 'technical'} deliverable with shifting deadlines or conflicting technical opinions. What action did you take to align the team, and what was the result?"
+    q3 = f"Describe a situation where you had to lead or collaborate on a {custom_topic or 'technical'} deliverable with shifting deadlines or conflicting technical opinions. What action did you take to align the team, and what was the result?"
     
-    q4 = f"Finally, let's discuss engineering trade-offs. In a production environment for a {role}, how do you evaluate the balance between shipping a feature quickly to meet critical business needs versus managing technical debt in your database and scaling architecture?"
+    q4 = f"In a production environment for a {role}, how do you evaluate the balance between shipping a feature quickly to meet critical business needs versus managing technical debt in your database and scaling architecture?"
 
     return [
         {
