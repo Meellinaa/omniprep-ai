@@ -472,6 +472,7 @@ function transitionScreen(screenId) {
 
 // 5. START INTERVIEW SIMULATION
 async function startSimulation() {
+    targetRole = document.getElementById("target-role").value.trim() || "Software Engineer";
     candidateEmail = document.getElementById("candidate-email").value.trim();
     jobDescription = document.getElementById("job-description").value.trim();
     customQuestions = document.getElementById("custom-questions").value.trim();
