@@ -1,6 +1,7 @@
 import os
 import logging
 import json
+import re
 from pypdf import PdfReader
 from google import genai
 from google.genai import types
@@ -23,13 +24,18 @@ def extract_text_from_pdf(pdf_path: str) -> str:
         logger.error(f"Error reading PDF {pdf_path}: {e}")
         return ""
 
-def generate_interview_questions(resume_text: str, job_description: str, custom_questions: str = "") -> list[dict]:
+def generate_interview_questions(
+    resume_text: str, 
+    job_description: str, 
+    custom_questions: str = "",
+    target_role: str = "Software Engineer"
+) -> list[dict]:
     """
     Generates an initial starting list of 4 structured questions based on resume, JD, and custom focus areas.
     """
     api_key = os.environ.get("GEMINI_API_KEY")
     if not api_key:
-        return get_mock_questions(resume_text, job_description, custom_questions)
+        return get_mock_questions(resume_text, job_description, custom_questions, target_role)
 
     try:
         client = genai.Client(api_key=api_key)
@@ -40,6 +46,9 @@ def generate_interview_questions(resume_text: str, job_description: str, custom_
         3. Behavioral Challenge (STAR method conflict or failure scenario)
         4. Situational Trade-Off (Business alignment & trade-offs)
         
+        Target Position / Role:
+        {target_role}
+        
         Resume Profile:
         {resume_text}
         
@@ -49,7 +58,7 @@ def generate_interview_questions(resume_text: str, job_description: str, custom_
         Candidate's Manual Focus Areas / Specific Questions:
         {custom_questions}
         
-        Combine the information in the resume, target job description, and custom questions. 
+        Combine the information in the resume, target job description, target role, and custom questions. 
         Tailor the questions specifically to their technical projects and the targeted role.
         
         Return a raw JSON list. Do not include markdown code block formatting.
@@ -75,52 +84,85 @@ def generate_interview_questions(resume_text: str, job_description: str, custom_
         raise ValueError("Invalid format")
     except Exception as e:
         logger.error(f"Error starting questions: {e}")
-        return get_mock_questions(resume_text, job_description, custom_questions)
+        return get_mock_questions(resume_text, job_description, custom_questions, target_role)
 
-def get_mock_questions(resume_text: str, job_description: str, custom_questions: str = "") -> list[dict]:
+def get_mock_questions(
+    resume_text: str, 
+    job_description: str, 
+    custom_questions: str = "",
+    target_role: str = "Software Engineer"
+) -> list[dict]:
     """
-    Mock questions generator helper. Tailors mock questions slightly based on keywords and custom focus inputs.
+    Mock questions generator helper. Dynamically parses the resume, target job description, 
+    and custom questions to generate highly tailored mock questions without relying on the Gemini API.
     """
-    is_stripe = "stripe" in job_description.lower()
-    is_td = "td" in job_description.lower() or "bank" in job_description.lower()
-    is_deloitte = "deloitte" in job_description.lower() or "analyst" in job_description.lower()
+    role = target_role or "Software Engineer"
+    resume_lower = resume_text.lower()
+    jd_lower = job_description.lower()
     
-    role = "Software Engineer"
-    if is_stripe: role = "Frontend Engineer @ Stripe"
-    elif is_td: role = "Software Engineer Co-op @ TD"
-    elif is_deloitte: role = "Product Analyst @ Deloitte"
+    tech_keywords = [
+        "react", "fastapi", "django", "java", "spring boot", "kubernetes", "docker", 
+        "postgresql", "mysql", "javascript", "typescript", "aws", "gcp", "python", "sql"
+    ]
     
+    extracted_skills = []
+    for skill in tech_keywords:
+        if skill in resume_lower or skill in jd_lower:
+            extracted_skills.append(skill.capitalize())
+            
+    primary_skills = ", ".join(extracted_skills[:3]) if extracted_skills else "software engineering fundamentals"
+
     custom_topic = ""
     if custom_questions:
-        # Extract a keyword from custom questions to make mock look tailored
-        words = custom_questions.lower().replace("about", "").replace("experience", "").replace("ask", "").split()
-        keywords = [w for w in words if len(w) > 4]
-        if keywords:
-            custom_topic = f" particularly focusing on {keywords[0].capitalize()},"
+        words = [w.strip(",.!?").capitalize() for w in custom_questions.split() if len(w) > 4 and w.lower() not in ["about", "experience", "questions", "please", "would", "could", "focus"]]
+        if words:
+            custom_topic = words[0]
+            
+    featured_project = ""
+    project_matches = re.findall(r'(?i)(?:project|application|system|app):\s*([a-zA-Z0-9_\-\s]{3,15})', resume_text)
+    if project_matches:
+        featured_project = project_matches[0].strip()
+    else:
+        match = re.search(r'\b([A-Z][a-zA-Z]+(?:\s+[A-Z][a-zA-Z]+){0,2})\s+(?:website|portal|dashboard|app|platform|system|service)\b', resume_text)
+        if match:
+            featured_project = match.group(1).strip()
+            
+    featured_project = featured_project or "featured software application"
+
+    q1 = f"Welcome to your mock interview for the {role} position. To start, could you walk me through your background and explain how your experience with {primary_skills} prepares you for this role?"
+    
+    if custom_topic:
+        q2 = f"For our technical deep-dive, let's explore your request to focus on {custom_topic}. Looking at your {featured_project}, what was the main engineering challenge you solved using {custom_topic}, and how did you verify its performance?"
+    else:
+        q2 = f"For our technical deep-dive, let's look at your {featured_project}. Can you outline a major engineering hurdle you encountered during its implementation, how you resolved it, and what technical trade-offs you made?"
         
+    q3 = f"Let's transition to a behavioral scenario. Describe a situation where you had to lead or collaborate on a {custom_topic or 'technical'} deliverable with shifting deadlines or conflicting technical opinions. What action did you take to align the team, and what was the result?"
+    
+    q4 = f"Finally, let's discuss engineering trade-offs. In a production environment for a {role}, how do you evaluate the balance between shipping a feature quickly to meet critical business needs versus managing technical debt in your database and scaling architecture?"
+
     return [
         {
             "stage": 1,
             "stage_name": "Introduction",
-            "question": f"Welcome to your mock interview for the {role} role. To start, could you walk me through your background and outline what makes you excited about this opportunity?",
+            "question": q1,
             "focus": "Communication clarity and resume introduction."
         },
         {
             "stage": 2,
             "stage_name": "Technical Project Deep-Dive",
-            "question": f"Looking at your experience,{custom_topic} tell me about a technically challenging project you built. What was the core technical hurdle, and how did you resolve it?",
+            "question": q2,
             "focus": "Problem-solving depth and architecture."
         },
         {
             "stage": 3,
             "stage_name": "Behavioral Challenge",
-            "question": "Describe a scenario where you faced conflicting technical opinions or a shifting project deadline. What action did you take to align the team, and what was the result?",
+            "question": q3,
             "focus": "Conflict resolution and flexibility (STAR method)."
         },
         {
             "stage": 4,
             "stage_name": "Situational Trade-Off",
-            "question": f"In a high-stakes scenario for {role}, how do you weigh the trade-offs between shipping a critical feature quickly to meet business needs versus ensuring long-term code stability?",
+            "question": q4,
             "focus": "Technical risk management and trade-off negotiation."
         }
     ]
