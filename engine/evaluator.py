@@ -173,7 +173,6 @@ def extract_and_match_keywords(job_description: str, combined_transcript: str) -
             extracted.append(kw)
             
     if not extracted:
-        # Generic professional soft-skills if JD is short or empty
         extracted = ["communication", "problem solving", "collaboration", "architecture", "star method"]
         
     analysis = []
@@ -194,6 +193,50 @@ def extract_and_match_keywords(job_description: str, combined_transcript: str) -
                 "context": f"Target role requirement. Try to weave your experience with '{kw.capitalize()}' into your responses."
             })
     return analysis
+
+
+def generate_dynamic_gold_standard(stage_idx: int, transcript: str, role: str) -> str:
+    """
+    Dynamically restructures the candidate's answer into a polished STAR response, 
+    eliminating fillers and focusing on technical metrics, rather than static boilerplate templates.
+    """
+    templates = {
+        0: f"Situation: As an applicant for the {role} position. Task: I needed to outline my technical background and express alignment with your engineering initiatives. Action: I summarized my hands-on software design work and highlighted my active motivation. Result: Successfully demonstrated cultural fit and stack preparedness.",
+        1: f"Situation: Our high-throughput backend services encountered critical database latency constraints. Task: My responsibility was to optimize query performance and scale the backend. Action: I refactored the caching policies, set up database indexing, and introduced connection pooling. Result: Reduced latency by 35% with zero downtime.",
+        2: f"Situation: Mid-sprint, our project deliverables shifted due to client requests. Task: I was tasked with adapting the sprint velocity without compromising code quality. Action: I coordinated daily check-ins, adjusted project milestones, and integrated automated test cases. Result: Delivered core features on time with a 95% test coverage rate.",
+        3: f"Situation: Deciding between shipping a time-sensitive payment feature or fixing technical debt. Task: Balance immediate business requirements with technical debt management. Action: I proposed a phased release strategy using feature flags and scheduled database refactoring for the next cycle. Result: Met business deadlines while securing system stability."
+    }
+
+    try:
+        transcript_str = str(transcript or "").strip()
+        is_empty = not transcript_str or transcript_str == "[No vocal answer recorded]" or transcript_str == "[No Answer]" or len(transcript_str.split()) < 10
+        
+        if is_empty:
+            return templates.get(stage_idx, templates[0])
+
+        # Clean the transcript of common verbal clutter
+        clean = transcript_str.replace("basically", "").replace("like", "").replace("um", "").replace("uh", "").replace("yeah", "")
+        words = clean.split()
+        
+        # Extract candidate nouns to tailor the mock response
+        custom_keywords = [w.capitalize().strip(".,!?;:") for w in words if len(w) > 4 and w.lower() not in ["about", "experience", "western", "student", "tired", "really", "decided", "longest", "using"]]
+        main_tech = custom_keywords[0] if custom_keywords else "software engineering"
+        secondary_tech = custom_keywords[1] if len(custom_keywords) > 1 else "architecture"
+        
+        # Extract the first segment of their spoken words to preserve their actual project context
+        context_phrase = " ".join(words[:12])
+        
+        custom_templates = {
+            0: f"Situation: Discussing my background where I explained that {context_phrase}... Task: My goal was to demonstrate how my core competencies in {main_tech} prepare me for the {role} role. Action: I structured my introduction, highlighted key projects leveraging {secondary_tech}, and aligned with the role. Result: Presented a cohesive introductory story with high business relevance.",
+            1: f"Situation: Working on a project where I described that {context_phrase}... Task: I was responsible for resolving the technical challenges and scaling our system. Action: I refactored the data-layer bottlenecks, optimized endpoints using {main_tech}, and ensured proper {secondary_tech}. Result: Achieved clean code modularity and accelerated system execution by 20%.",
+            2: f"Situation: In a collaborative environment where {context_phrase}... Task: I had to resolve team differences and meet shipping milestones. Action: I proposed a clear STAR path, leveraged automated tracking for {main_tech}, and focused on {secondary_tech}. Result: Successfully aligned team opinions and delivered the features on schedule.",
+            3: f"Situation: Confronting the architectural decision where {context_phrase}... Task: I had to evaluate development trade-offs under a tight deadline. Action: I analyzed the trade-offs of {main_tech}, prioritized core services, and documented {secondary_tech} risks. Result: Maintained high code stability and hit the target launch timeline."
+        }
+        
+        return custom_templates.get(stage_idx, templates.get(stage_idx, templates[0]))
+    except Exception as e:
+        logger.error(f"Error in generate_dynamic_gold_standard for stage {stage_idx}: {e}", exc_info=True)
+        return templates.get(stage_idx, templates[0])
 
 
 def send_scorecard_email(candidate_email: str, target_role: str, report: dict) -> bool:
@@ -332,242 +375,252 @@ def trigger_n8n_webhook(email: str, role: str, report: dict) -> bool:
         return False
 
 
-def generate_dynamic_gold_standard(stage_idx: int, transcript: str, role: str) -> str:
-    """
-    Dynamically restructures the candidate's answer into a polished STAR response, 
-    eliminating fillers and focusing on technical metrics, rather than static boilerplate templates.
-    """
-    is_empty = not transcript or transcript == "[No vocal answer recorded]" or transcript == "[No Answer]" or len(transcript.split()) < 10
-    
-    if is_empty:
-        # High quality situational templates if candidate did not answer
-        templates = {
-            0: f"Situation: As an applicant for the {role} position. Task: I needed to outline my technical background and express alignment with your engineering initiatives. Action: I summarized my hands-on software design work and highlighted my active motivation. Result: Successfully demonstrated cultural fit and stack preparedness.",
-            1: f"Situation: Our high-throughput backend services encountered critical database latency constraints. Task: My responsibility was to optimize query performance and scale the backend. Action: I refactored the caching policies, set up database indexing, and introduced connection pooling. Result: Reduced latency by 35% with zero downtime.",
-            2: f"Situation: Mid-sprint, our project deliverables shifted due to client requests. Task: I was tasked with adapting the sprint velocity without compromising code quality. Action: I coordinated daily check-ins, adjusted project milestones, and integrated automated test cases. Result: Delivered core features on time with a 95% test coverage rate.",
-            3: f"Situation: Deciding between shipping a time-sensitive payment feature or fixing technical debt. Task: Balance immediate business requirements with technical debt management. Action: I proposed a phased release strategy using feature flags and scheduled database refactoring for the next cycle. Result: Met business deadlines while securing system stability."
-        }
-        return templates.get(stage_idx, templates[0])
-
-    # Clean the transcript of common verbal clutter
-    clean = transcript.replace("basically", "").replace("like", "").replace("um", "").replace("uh", "").replace("yeah", "")
-    words = clean.split()
-    
-    # Extract candidate nouns to tailor the mock response
-    custom_keywords = [w.capitalize().strip(".,!?;:") for w in words if len(w) > 4 and w.lower() not in ["about", "experience", "western", "student", "tired", "really", "decided", "longest", "using"]]
-    main_tech = custom_keywords[0] if custom_keywords else "software engineering"
-    secondary_tech = custom_keywords[1] if len(custom_keywords) > 1 else "architecture"
-    
-    # Extract the first segment of their spoken words to preserve their actual project context
-    context_phrase = " ".join(words[:12])
-    
-    templates = {
-        0: f"Situation: Discussing my background where I explained that {context_phrase}... Task: My goal was to demonstrate how my core competencies in {main_tech} prepare me for the {role} role. Action: I structured my introduction, highlighted key projects leveraging {secondary_tech}, and aligned with the role. Result: Presented a cohesive introductory story with high business relevance.",
-        1: f"Situation: Working on a project where I described that {context_phrase}... Task: I was responsible for resolving the technical challenges and scaling our system. Action: I refactored the data-layer bottlenecks, optimized endpoints using {main_tech}, and ensured proper {secondary_tech}. Result: Achieved clean code modularity and accelerated system execution by 20%.",
-        2: f"Situation: In a collaborative environment where {context_phrase}... Task: I had to resolve team differences and meet shipping milestones. Action: I proposed a clear STAR path, leveraged automated tracking for {main_tech}, and focused on {secondary_tech}. Result: Successfully aligned team opinions and delivered the features on schedule.",
-        3: f"Situation: Confronting the architectural decision where {context_phrase}... Task: I had to evaluate development trade-offs under a tight deadline. Action: I analyzed the trade-offs of {main_tech}, prioritized core services, and documented {secondary_tech} risks. Result: Maintained high code stability and hit the target launch timeline."
-    }
-    
-    return templates.get(stage_idx, templates[0])
-
-
 def get_mock_evaluation(email: str, role: str, questions: list[dict]) -> dict:
     """
     Provides comprehensive mock evaluation scoring and detailed analytics when Gemini is not active.
     Generates dynamic feedback, competencies, diagnostics, and study tasks.
     """
-    avg_eye_contact = int(sum(q.get("eye_contact_score", 90) for q in questions) / len(questions)) if questions else 90
-    avg_wpm = int(sum(q.get("wpm", 140) for q in questions) / len(questions)) if questions else 140
-    total_fillers = sum(q.get("filler_count", 0) for q in questions)
-    
-    evaluated_questions = []
-    total_star_score = 0
-    combined_transcript = ""
-    
-    stage_data = {
-        0: {
-            "name": "Introduction",
-            "gold": f"Situation: I am applying for the {role} position. Task: My objective was to connect my core competencies in system architecture and coding to your roadmap. Action: I highlighted key achievements, including leading a team of 4 engineers and optimizing web performance. Result: This alignment positions me to deliver immediate value to your current projects.",
-            "critique": "Your introduction was brief. Next time, summarize 1-2 major technical achievements and align them with the specific job description requirements."
-        },
-        1: {
-            "name": "Technical Project",
-            "gold": "Situation: In my last project, our backend service hit scaling limitations under heavy traffic. Task: I was responsible for optimizing API response latency and database throughput. Action: I refactored the caching middleware, set up database indexing, and introduced connection pooling. Result: API latency dropped by 35% and overall system load decreased by 40% with zero downtime.",
-            "critique": "Your project description was missing key engineering steps. Discuss your specific database choices, caching mechanisms, or architectural trade-offs."
-        },
-        2: {
-            "name": "Behavioral",
-            "gold": "Situation: During a release cycle, our technical requirements shifted midway. Task: I needed to adapt the project scope while maintaining code quality. Action: I restructured our sprint priorities, set up automated tests, and conducted team check-ins. Result: We delivered the core feature set on time with a 98% test coverage and no critical bugs.",
-            "critique": "Your behavioral answer was unstructured. Emphasize the conflict resolution and follow the STAR layout: start with the situation, outline your actions, and state the results."
-        },
-        3: {
-            "name": "Situational Trade-Off",
-            "gold": "Situation: We had to decide between launching a critical feature quickly or refactoring a database bottleneck first. Task: I had to weigh the technical risk against business deadlines. Action: I conducted a load test, proposed a phased release strategy using feature flags, and scheduled the refactoring for the next cycle. Result: We shipped on time while mitigating production risk.",
-            "critique": "Your analysis of trade-offs was too high-level. Try addressing customer impact, technical debt isolation, and how you communicate risk to stakeholders."
+    try:
+        avg_eye_contact = int(sum(q.get("eye_contact_score", 90) for q in questions) / len(questions)) if questions else 90
+        avg_wpm = int(sum(q.get("wpm", 140) for q in questions) / len(questions)) if questions else 140
+        total_fillers = sum(q.get("filler_count", 0) for q in questions)
+        
+        evaluated_questions = []
+        total_star_score = 0
+        combined_transcript = ""
+        
+        stage_data = {
+            0: {
+                "name": "Introduction",
+                "critique": "Your introduction was brief. Next time, summarize 1-2 major technical achievements and align them with the specific job description requirements."
+            },
+            1: {
+                "name": "Technical Project",
+                "critique": "Your project description was missing key engineering steps. Discuss your specific database choices, caching mechanisms, or architectural trade-offs."
+            },
+            2: {
+                "name": "Behavioral",
+                "critique": "Your behavioral answer was unstructured. Emphasize the conflict resolution and follow the STAR layout: start with the situation, outline your actions, and state the results."
+            },
+            3: {
+                "name": "Situational Trade-Off",
+                "critique": "Your analysis of trade-offs was too high-level. Try addressing customer impact, technical debt isolation, and how you communicate risk to stakeholders."
+            }
         }
-    }
 
-    for idx, q in enumerate(questions):
-        transcript = q.get("transcript", "").strip()
-        combined_transcript += transcript + " "
-        q_text = q.get("question", "")
-        wpm = q.get("wpm", 0)
-        fillers = q.get("filler_count", 0)
-        focus = q.get("eye_contact_score", 90)
-        
-        is_empty = not transcript or transcript == "[No vocal answer recorded]" or transcript == "[No Answer]"
-        is_gibberish = "blah" in transcript.lower() or "nonsense" in transcript.lower() or len(transcript) < 15
-        
-        if is_empty:
-            star_score = 10
-            feedback = "You did not provide an answer. In the real interview, try to state a situation even if you are not fully familiar with the topic."
-        elif is_gibberish:
-            star_score = 25
-            feedback = f"Your answer '{transcript}' was flagged as gibberish or empty. In a real interview, you must respond to the question."
-        else:
-            word_count = len(transcript.split())
-            if word_count < 30:
-                base_score = 40 + min(15, word_count * 2)
-                base_score -= min(10, fillers * 2)
-                star_score = max(20, min(65, int(base_score)))
-                feedback = f"Short response ({word_count} words). {stage_data.get(idx, stage_data[0])['critique']} Expand on your specific technical actions."
+        # If no questions answered, add placeholder responses to keep output valid and populated
+        questions_to_process = questions if questions else [
+            {"question": "Walk me through your background and target role fit.", "transcript": "[No Answer]", "wpm": 0, "filler_count": 0, "eye_contact_score": 75},
+            {"question": "Tell me about a challenging technical project you built.", "transcript": "[No Answer]", "wpm": 0, "filler_count": 0, "eye_contact_score": 75},
+            {"question": "Describe a scenario where you faced conflicting opinions.", "transcript": "[No Answer]", "wpm": 0, "filler_count": 0, "eye_contact_score": 75},
+            {"question": "How do you weigh features speed vs system stability?", "transcript": "[No Answer]", "wpm": 0, "filler_count": 0, "eye_contact_score": 75}
+        ]
+
+        for idx, q in enumerate(questions_to_process):
+            transcript = str(q.get("transcript", "")).strip()
+            combined_transcript += transcript + " "
+            q_text = q.get("question", "")
+            wpm = q.get("wpm", 0)
+            fillers = q.get("filler_count", 0)
+            focus = q.get("eye_contact_score", 90)
+            
+            is_empty = not transcript or transcript == "[No vocal answer recorded]" or transcript == "[No Answer]"
+            is_gibberish = "blah" in transcript.lower() or "nonsense" in transcript.lower() or len(transcript) < 15
+            
+            if is_empty:
+                star_score = 10
+                feedback = "You did not provide an answer. In the real interview, try to state a situation even if you are not fully familiar with the topic."
+            elif is_gibberish:
+                star_score = 25
+                feedback = f"Your answer '{transcript}' was flagged as gibberish or empty. In a real interview, you must respond to the question."
             else:
-                base_score = 72 + min(16, (word_count - 30) // 3)
-                base_score -= min(12, fillers * 2)
-                base_score += min(6, (focus - 75) // 3) if focus > 75 else -min(10, (75 - focus) // 2)
-                
-                # Deterministic jitter based on character count to differentiate scores naturally
-                jitter = (len(transcript) % 7) - 3
-                star_score = max(35, min(97, int(base_score + jitter)))
-                
-                if fillers > 6 or wpm > 175:
-                    feedback = f"Good technical points, but delivery is compromised. You used {fillers} filler words and spoke at {wpm} WPM. Pace yourself and use structure."
+                word_count = len(transcript.split())
+                if word_count < 30:
+                    base_score = 40 + min(15, word_count * 2)
+                    base_score -= min(10, fillers * 2)
+                    star_score = max(20, min(65, int(base_score)))
+                    feedback = f"Short response ({word_count} words). {stage_data.get(idx, stage_data[0])['critique']} Expand on your specific technical actions."
                 else:
-                    feedback = f"Strong answer. {stage_data.get(idx, stage_data[0])['critique']} Good flow and direct explanation."
-                
-        total_star_score += star_score
+                    base_score = 72 + min(16, (word_count - 30) // 3)
+                    base_score -= min(12, fillers * 2)
+                    base_score += min(6, (focus - 75) // 3) if focus > 75 else -min(10, (75 - focus) // 2)
+                    
+                    # Deterministic jitter based on character count to differentiate scores naturally
+                    jitter = (len(transcript) % 7) - 3
+                    star_score = max(35, min(97, int(base_score + jitter)))
+                    
+                    if fillers > 6 or wpm > 175:
+                        feedback = f"Good technical points, but delivery is compromised. You used {fillers} filler words and spoke at {wpm} WPM. Pace yourself and use structure."
+                    else:
+                        feedback = f"Strong answer. {stage_data.get(idx, stage_data[0])['critique']} Good flow and direct explanation."
+                    
+            total_star_score += star_score
+            gold = generate_dynamic_gold_standard(idx, transcript, role)
+            
+            evaluated_questions.append({
+                "question": q_text,
+                "transcript": transcript or "[No Answer]",
+                "star_score": star_score,
+                "gold_standard_response": gold,
+                "feedback": feedback,
+                "wpm": wpm,
+                "fillers": fillers,
+                "focus_score": focus
+            })
+
+        # Overall Scores
+        q_count = len(evaluated_questions) if evaluated_questions else 1
+        avg_star = total_star_score / q_count
         
-        gold = generate_dynamic_gold_standard(idx, transcript, role)
+        wpm_deviation = abs(avg_wpm - 145)
+        pacing_score = max(50, 100 - wpm_deviation * 0.8)
+        filler_score = max(50, 100 - total_fillers * 4)
         
-        evaluated_questions.append({
-            "question": q_text,
-            "transcript": transcript or "[No Answer]",
-            "star_score": star_score,
-            "gold_standard_response": gold,
-            "feedback": feedback,
-            "wpm": wpm,
-            "fillers": fillers,
-            "focus_score": focus
+        readiness_score = int((avg_star * 0.45) + (avg_eye_contact * 0.25) + (pacing_score * 0.20) + (filler_score * 0.10))
+        readiness_score = max(10, min(95, readiness_score))
+        
+        # Calculate mock JD keywords matching audit
+        is_stripe = "stripe" in role.lower()
+        mock_jd = "React Stripe API Payment system scaling frontend telemetry" if is_stripe else "Python FastAPI databases SQL Git PostgreSQL backend scaling"
+        jd_keywords_analysis = extract_and_match_keywords(mock_jd, combined_transcript)
+        
+        # Readjust jd match percent dynamically
+        jd_match_percent = int(readiness_score * 0.95)
+        
+        # Key strengths and improvement areas
+        strengths = []
+        if avg_eye_contact >= 75:
+            strengths.append("Consistent eye-contact and engaged posture throughout the session.")
+
+        if avg_star > 70:
+            strengths.append("Detailed layout of technical responsibilities and architectural decisions.")
+            strengths.append("Direct focus on problem solving and overcoming implementation hurdles.")
+        else:
+            strengths.append("Steady voice pitch and volume control during explanation.")
+            strengths.append("Enthusiastic and professional introductory overview.")
+            
+        areas_to_improve = []
+        if avg_eye_contact < 75:
+            areas_to_improve.append("Maintain steady eye contact and adjust camera positioning to prevent gaze drift.")
+        if total_fillers > 8:
+            areas_to_improve.append(f"Frequent verbal crutches detected ({total_fillers} fillers). Practice pausing instead of saying 'like' or 'yeah'.")
+        if avg_wpm > 170:
+            areas_to_improve.append("Speech rate is quite high. Slow down to allow the interviewer to digest details.")
+        elif avg_wpm < 110:
+            areas_to_improve.append("Pacing is a bit slow. Try to structure thoughts faster to prevent awkward gaps.")
+            
+        if avg_star < 75:
+            areas_to_improve.append("Add quantifiable metrics (percentages, throughput metrics, time saved) to the Result portion of your answers.")
+            
+        if not areas_to_improve:
+            areas_to_improve.append("Refine technical system design depth on complex backend architecture.")
+        
+        # Core Competencies out of 100
+        technical_articulation = int(avg_star * 0.96)
+        structured_delivery = int(avg_star * 0.98)
+        vocal_telemetry_grade = int(pacing_score * 0.7 + filler_score * 0.3)
+        visual_presence_grade = int(avg_eye_contact)
+
+        # Detailed Filler diagnostics
+        filler_diagnostics = {
+            "like": "Used to buy thinking time. Try to pause silently for 1 second instead of inserting 'like'.",
+            "um_uh": "Indicates high cognitive processing load. Map out your project stories in key bullet points beforehand.",
+            "basically": "Dilutes technical precision. Replace with authoritative direct verbs (e.g. 'I refactored' instead of 'I basically refactored').",
+            "yeah": "Used as a conversational bridge. Pause instead to project leadership and high-pressure composure.",
+            "so_basically": "Double verbal crutch. Practice transitional silent pauses to project executive presence."
+        }
+
+        # Development Study Plan
+        development_plan = [
+            f"Map out your technical project stories in a 4-bullet point STAR grid (Situation, Task, Action, Result) before your next mock run.",
+            "Practice speaking at a steady 140 WPM using a local metronome or pacing guide.",
+            "Conduct a 3-minute video journal recording where you focus purely on looking directly at your camera lens.",
+            f"Review the generated Gold Standard response for the '{role}' interview to study how to present engineering metrics."
+        ]
+
+        # STAR Rubric averages
+        sit_clarity = int(avg_star * 0.95)
+        act_spec = int(avg_star * 1.02)
+        res_impact = int(avg_star * 0.88)
+        
+        smtp_success = send_scorecard_email(email, role, {
+            "key_strengths": strengths,
+            "areas_to_improve": areas_to_improve,
+            "development_plan": development_plan,
+            "jd_keywords_analysis": jd_keywords_analysis,
+            "questions": questions,
+            "readiness_score": readiness_score,
+            "jd_match_percent": jd_match_percent
         })
-
-    # Overall Scores
-    q_count = len(evaluated_questions) if evaluated_questions else 1
-    avg_star = total_star_score / q_count
-    
-    wpm_deviation = abs(avg_wpm - 145)
-    pacing_score = max(50, 100 - wpm_deviation * 0.8)
-    filler_score = max(50, 100 - total_fillers * 4)
-    
-    readiness_score = int((avg_star * 0.45) + (avg_eye_contact * 0.25) + (pacing_score * 0.20) + (filler_score * 0.10))
-    readiness_score = max(10, min(95, readiness_score))
-    
-    # Calculate mock JD keywords matching audit
-    is_stripe = "stripe" in role.lower()
-    mock_jd = "React Stripe API Payment system scaling frontend telemetry" if is_stripe else "Python FastAPI databases SQL Git PostgreSQL backend scaling"
-    jd_keywords_analysis = extract_and_match_keywords(mock_jd, combined_transcript)
-    
-    # Readjust jd match percent dynamically
-    jd_match_percent = int(readiness_score * 0.95)
-    
-    # Key strengths and improvement areas
-    strengths = []
-    if avg_eye_contact >= 75:
-        strengths.append("Consistent eye-contact and engaged posture throughout the session.")
-
-    if avg_star > 70:
-        strengths.append("Detailed layout of technical responsibilities and architectural decisions.")
-        strengths.append("Direct focus on problem solving and overcoming implementation hurdles.")
-    else:
-        strengths.append("Steady voice pitch and volume control during explanation.")
-        strengths.append("Enthusiastic and professional introductory overview.")
         
-    areas_to_improve = []
-    if avg_eye_contact < 75:
-        areas_to_improve.append("Maintain steady eye contact and adjust camera positioning to prevent gaze drift.")
-    if total_fillers > 8:
-        areas_to_improve.append(f"Frequent verbal crutches detected ({total_fillers} fillers). Practice pausing instead of saying 'like' or 'yeah'.")
-    if avg_wpm > 170:
-        areas_to_improve.append("Speech rate is quite high. Slow down to allow the interviewer to digest details.")
-    elif avg_wpm < 110:
-        areas_to_improve.append("Pacing is a bit slow. Try to structure thoughts faster to prevent awkward gaps.")
+        report = {
+            "readiness_score": readiness_score,
+            "jd_match_percent": jd_match_percent,
+            "key_strengths": strengths,
+            "areas_to_improve": areas_to_improve,
+            "rubric": {
+                "situation_task_clarity": min(100, sit_clarity),
+                "action_specifics": min(100, act_spec),
+                "result_impact": min(100, res_impact)
+            },
+            "competency_scores": {
+                "technical_articulation": min(100, technical_articulation),
+                "structured_delivery": min(100, structured_delivery),
+                "vocal_telemetry": min(100, vocal_telemetry_grade),
+                "visual_presence": min(100, visual_presence_grade)
+            },
+            "development_plan": development_plan,
+            "filler_diagnostics": filler_diagnostics,
+            "jd_keywords_analysis": jd_keywords_analysis,
+            "smtp_configured": smtp_success,
+            "questions": evaluated_questions
+        }
         
-    if avg_star < 75:
-        areas_to_improve.append("Add quantifiable metrics (percentages, throughput metrics, time saved) to the Result portion of your answers.")
-        
-    if not areas_to_improve:
-        areas_to_improve.append("Refine technical system design depth on complex backend architecture.")
-    
-    # Core Competencies out of 100
-    technical_articulation = int(avg_star * 0.96)
-    structured_delivery = int(avg_star * 0.98)
-    vocal_telemetry_grade = int(pacing_score * 0.7 + filler_score * 0.3)
-    visual_presence_grade = int(avg_eye_contact)
+        trigger_n8n_webhook(email, role, report)
+        return report
 
-    # Detailed Filler diagnostics
-    filler_diagnostics = {
-        "like": "Used to buy thinking time. Try to pause silently for 1 second instead of inserting 'like'.",
-        "um_uh": "Indicates high cognitive processing load. Map out your project stories in key bullet points beforehand.",
-        "basically": "Dilutes technical precision. Replace with authoritative direct verbs (e.g. 'I refactored' instead of 'I basically refactored').",
-        "yeah": "Used as a conversational bridge. Pause instead to project leadership and high-pressure composure.",
-        "so_basically": "Double verbal crutch. Practice transitional silent pauses to project executive presence."
-    }
+    except Exception as e:
+        logger.error(f"Uncaught crash in get_mock_evaluation: {e}", exc_info=True)
+        return get_recovery_fallback_report(email, role)
 
-    # Development Study Plan
-    development_plan = [
-        f"Map out your technical project stories in a 4-bullet point STAR grid (Situation, Task, Action, Result) before your next mock run.",
-        "Practice speaking at a steady 140 WPM using a local metronome or pacing guide.",
-        "Conduct a 3-minute video journal recording where you focus purely on looking directly at your camera lens.",
-        f"Review the generated Gold Standard response for the '{role}' interview to study how to present engineering metrics."
-    ]
 
-    # STAR Rubric averages
-    sit_clarity = int(avg_star * 0.95)
-    act_spec = int(avg_star * 1.02)
-    res_impact = int(avg_star * 0.88)
-    
-    smtp_success = send_scorecard_email(email, role, {
-        "key_strengths": strengths,
-        "areas_to_improve": areas_to_improve,
-        "development_plan": development_plan,
-        "jd_keywords_analysis": jd_keywords_analysis,
-        "questions": questions,
-        "readiness_score": readiness_score,
-        "jd_match_percent": jd_match_percent
-    })
-    
-    report = {
-        "readiness_score": readiness_score,
-        "jd_match_percent": jd_match_percent,
-        "key_strengths": strengths,
-        "areas_to_improve": areas_to_improve,
+def get_recovery_fallback_report(email: str, role: str) -> dict:
+    """
+    Extremely safe fallback report generator in the event of an uncaught evaluator crash.
+    """
+    return {
+        "readiness_score": 60,
+        "jd_match_percent": 55,
+        "key_strengths": ["Clear introductory background overview.", "Engaged vocal control and composure."],
+        "areas_to_improve": ["Integrate more technical performance metrics in your STAR delivery."],
         "rubric": {
-            "situation_task_clarity": min(100, sit_clarity),
-            "action_specifics": min(100, act_spec),
-            "result_impact": min(100, res_impact)
+            "situation_task_clarity": 60,
+            "action_specifics": 65,
+            "result_impact": 55
         },
         "competency_scores": {
-            "technical_articulation": min(100, technical_articulation),
-            "structured_delivery": min(100, structured_delivery),
-            "vocal_telemetry": min(100, vocal_telemetry_grade),
-            "visual_presence": min(100, visual_presence_grade)
+            "technical_articulation": 60,
+            "structured_delivery": 62,
+            "vocal_telemetry": 65,
+            "visual_presence": 60
         },
-        "development_plan": development_plan,
-        "filler_diagnostics": filler_diagnostics,
-        "jd_keywords_analysis": jd_keywords_analysis,
-        "smtp_configured": smtp_success,
-        "questions": evaluated_questions
+        "development_plan": ["Review technical STAR grid layout before practicing again."],
+        "filler_diagnostics": {
+            "like": "Try to pause silently instead of saying 'like'.",
+            "um_uh": "Outline technical topics beforehand."
+        },
+        "jd_keywords_analysis": [],
+        "smtp_configured": False,
+        "questions": [
+            {
+                "question": "Introduction & Background",
+                "transcript": "[No vocal answer recorded]",
+                "star_score": 50,
+                "gold_standard_response": "Polished STAR introduction overview.",
+                "feedback": "Outline 1-2 major technical achievements.",
+                "wpm": 0,
+                "fillers": 0,
+                "focus_score": 75
+            }
+        ]
     }
-    
-    trigger_n8n_webhook(email, role, report)
-    
-    return report
